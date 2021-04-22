@@ -4,6 +4,9 @@ import itertools
 import logging
 import os
 import re
+from typing import Literal, List
+
+import httpx
 import requests
 import sys
 import time
@@ -731,9 +734,13 @@ def build_data2(w, editions, authors, ia, duplicates):
     resolve_redirects = False
 
     assert w['type']['key'] == '/type/work'
-    title = w.get('title', None)
-    if not title:
-        return
+    # Some works are missing a title, but have titles on their editions
+    w['title'] = next(itertools.chain(
+        (book['title'] for book in itertools.chain([w], editions) if book.get('title')),
+        ['__None__']
+    ))
+    if w['title'] == '__None__':
+        logger.warning('Work missing title %s' % w['key'])
 
     p = SolrProcessor(resolve_redirects)
 
@@ -848,15 +855,46 @@ def build_data2(w, editions, authors, ia, duplicates):
 
     return doc
 
-def solr_update(requests, debug=False, commitWithin=60000):
+
+async def solr_insert_documents(
+        documents: List[dict],
+        commit_within=60_000,
+        solr_base_url: str = None,
+        skip_id_check=False,
+):
+    """
+    Note: This has only been tested with Solr 8, but might work with Solr 3 as well.
+    """
+    solr_base_url = solr_base_url or get_solr_base_url()
+    params = {}
+    if commit_within is not None:
+        params['commitWithin'] = commit_within
+    if skip_id_check:
+        params['overwrite'] = 'false'
+    logger.info(f"POSTing update to {solr_base_url}/update {params}")
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f'{solr_base_url}/update',
+            timeout=30,  # The default timeout is silly short
+            params=params,
+            headers={'Content-Type': 'application/json'},
+            data=json.dumps(documents)  # type: ignore
+        )
+    resp.raise_for_status()
+
+
+def solr_update(requests, debug=False, commitWithin=60000, solr_base_url: str = None):
     """POSTs a collection of update requests to Solr.
     TODO: Deprecate and remove string requests. Is anything else still generating them?
     :param list[string or UpdateRequest or DeleteRequest] requests: Requests to send to Solr
     :param bool debug:
     :param int commitWithin: Solr commitWithin, in ms
     """
-    url = get_solr_base_url() + '/update'
+    solr_base_url = solr_base_url or get_solr_base_url()
+    url = f'{solr_base_url}/update'
     parsed_url = urlparse(url)
+    assert parsed_url.hostname
+
     if parsed_url.port:
         h1 = HTTPConnection(parsed_url.hostname, parsed_url.port)
     else:
@@ -1153,6 +1191,32 @@ def update_subject(key):
     return request_set.get_requests()
 
 
+def subject_name_to_key(
+        subject_type: Literal['subject', 'person', 'place', 'time'],
+        subject_name: str
+) -> str:
+    escaped_subject_name = str_to_key(subject_name)
+    if subject_type == 'subject':
+        return f"/subjects/{escaped_subject_name}"
+    else:
+        return f"/subjects/{subject_type}:{escaped_subject_name}"
+
+
+def build_subject_doc(
+        subject_type: Literal['subject', 'person', 'place', 'time'],
+        subject_name: str,
+        work_count: int,
+):
+    """Build the `type:subject` solr doc for this subject."""
+    return {
+        'key': subject_name_to_key(subject_type, subject_name),
+        'name': subject_name,
+        'type': 'subject',
+        'subject_type': subject_type,
+        'work_count': work_count,
+    }
+
+
 def update_work(work):
     """
     Get the Solr requests necessary to insert/update this work into Solr.
@@ -1172,14 +1236,14 @@ def update_work(work):
 
     # Handle edition records as well
     # When an edition does not contain a works list, create a fake work and index it.
-    if work['type']['key'] == '/type/edition' and work.get('title'):
+    if work['type']['key'] == '/type/edition':
         fake_work = {
             # Solr uses type-prefixed keys. It's required to be unique across
             # all types of documents. The website takes care of redirecting
             # /works/OL1M to /books/OL1M.
             'key': wkey.replace("/books/", "/works/"),
             'type': {'key': '/type/work'},
-            'title': work['title'],
+            'title': work.get('title'),
             'editions': [work],
             'authors': [{'type': '/type/author_role', 'author': {'key': a['key']}} for a in work.get('authors', [])]
         }
@@ -1187,7 +1251,7 @@ def update_work(work):
         if work.get("subjects"):
             fake_work['subjects'] = work['subjects']
         return update_work(fake_work)
-    elif work['type']['key'] == '/type/work' and work.get('title'):
+    elif work['type']['key'] == '/type/work':
         try:
             solr_doc = build_data(work)
             dict2element(solr_doc)
@@ -1202,7 +1266,7 @@ def update_work(work):
     elif work['type']['key'] in ['/type/delete', '/type/redirect']:
         requests.append(DeleteRequest([wkey]))
     else:
-        logger.error("unrecognized type while updating work %s", wkey, exc_info=True)
+        logger.error("unrecognized type while updating work %s", wkey)
 
     return requests
 
@@ -1214,7 +1278,7 @@ def make_delete_query(keys):
     Example:
 
     >>> make_delete_query(["/books/OL1M"])
-    '<delete><query>key:/books/OL1M</query></delete>'
+    '<delete><id>/books/OL1M</id></delete>'
 
     :param list[str] keys: Keys to create delete tags for. (ex: ["/books/OL1M"])
     :return: <delete> XML element as a string
@@ -1224,8 +1288,8 @@ def make_delete_query(keys):
     keys = [solr_escape(key) for key in keys]
     delete_query = Element('delete')
     for key in keys:
-        query = SubElement(delete_query,'query')
-        query.text = 'key:%s' % key
+        query = SubElement(delete_query, 'id')
+        query.text = key
     return tostring(delete_query, encoding="unicode")
 
 def update_author(akey, a=None, handle_redirects=True):

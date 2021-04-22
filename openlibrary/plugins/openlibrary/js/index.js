@@ -140,7 +140,7 @@ jQuery(function () {
             .then((module) => module.init());
     }
 
-    if (document.getElementById('modal-link')) {
+    if (document.getElementsByClassName('modal-link').length) {
         import(/* webpackChunkName: "patron_metadata" */ './patron-metadata')
             .then((module) => module.initPatronMetadata());
     }
@@ -164,6 +164,11 @@ jQuery(function () {
     if (document.getElementsByClassName('imageSaved').length) {
         import('./covers')
             .then((module) => module.initCoversSaved());
+    }
+
+    if (document.getElementById('adminLinks')) {
+        import(/* webpackChunkName: "admin" */ './admin')
+            .then((module) => module.initAdmin());
     }
 
     if ($('#cboxPrevious').length) {
