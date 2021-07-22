@@ -1,6 +1,6 @@
 ports:
 - port: 8080
 tasks:
-#- init: docker-compose build
-- init: echi "HII" > example.txt
+- init: docker-compose build
+- init: echo "HII" > example.txt
 #- command: docker-compose up
