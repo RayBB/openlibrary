@@ -1,5 +1,14 @@
 ports:
 - port: 8080
+# ignore these ports by default to avoid extra notifications
+- port: 8983
+  onOpen: ignore
+- port: 7075
+  onOpen: ignore
+- port: 7000
+  onOpen: ignore
+- port: 3000
+  onOpen: ignore
 tasks:
 - name: Start Full App
   before: sudo chown -R gitpod:999 /workspace/openlibrary/
