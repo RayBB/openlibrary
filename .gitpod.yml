@@ -1,6 +1,6 @@
 ports:
 - port: 8080
 tasks:
+- init: sudo chown -R gitpod:999 /workspace/openlibrary/
 - init: docker-compose build
-- init: echo "HII" > example.txt
 #- command: docker-compose up
