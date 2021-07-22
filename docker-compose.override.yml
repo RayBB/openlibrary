@@ -13,14 +13,14 @@ services:
       - 3000:3000
     volumes:
       # Persistent volume mount for installed git submodules
-      - ol-vendor:/openlibrary/vendor
+      - ol-vendor:/openlibrary2/vendor
       # Persistent volume mount for generated css and js
-      - ol-build:/openlibrary/static/build
+      - ol-build:/openlibrary2/static/build
       # Persistent volume mount for node_modules
-      - ol-nodemodules:/openlibrary/node_modules
+      - ol-nodemodules:/openlibrary2/node_modules
       # The above volume mounts are required so that the local dev bind mount below
       # does not clobber the data generated inside the image / container
-      - .:/openlibrary
+      - .:/openlibrary2
     depends_on:
       - db
       - infobase
@@ -35,15 +35,15 @@ services:
       dockerfile: docker/Dockerfile.oldev
     volumes:
       # Persistent volume mount for installed git submodules
-      - ol-vendor:/openlibrary/vendor
-      - .:/openlibrary
+      - ol-vendor:/openlibrary2/vendor
+      - .:/openlibrary2
 
   db:
     image: postgres:9.3
     networks:
       - dbnet
     volumes:
-      - .:/openlibrary
+      - .:/openlibrary2
       # Any files inside /docker-entrypoint-initdb.d/ will get run by postgres
       # if the db is empty (which as of now is always, since we don't store the
       # postgres data anywhere).
@@ -56,8 +56,8 @@ services:
     ports:
       - 7075:7075
     volumes:
-      - ol-vendor:/openlibrary/vendor
-      - .:/openlibrary
+      - ol-vendor:/openlibrary2/vendor
+      - .:/openlibrary2
 
   infobase:
     build:
@@ -66,8 +66,8 @@ services:
     ports:
       - 7000:7000
     volumes:
-      - ol-vendor:/openlibrary/vendor
-      - .:/openlibrary
+      - ol-vendor:/openlibrary2/vendor
+      - .:/openlibrary2
     depends_on:
       - db
 
@@ -87,10 +87,10 @@ services:
         max-size: "512m"
         max-file: "4"
     volumes:
-      - ol-vendor:/openlibrary/vendor
-      - ol-build:/openlibrary/static/build
-      - ol-nodemodules:/openlibrary/node_modules
-      - .:/openlibrary
+      - ol-vendor:/openlibrary2/vendor
+      - ol-build:/openlibrary2/static/build
+      - ol-nodemodules:/openlibrary2/node_modules
+      - .:/openlibrary2
 
 volumes:
   ol-vendor:
