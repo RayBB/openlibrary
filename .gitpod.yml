@@ -3,4 +3,5 @@ ports:
 tasks:
 - init: sudo chown -R gitpod:999 /workspace/openlibrary/
 - init: docker-compose build
+- init: docker-compose pull
 - command: docker-compose up
