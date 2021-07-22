@@ -12,7 +12,5 @@ ports:
 tasks:
 - name: Start Full App
   before: sudo chown -R gitpod:999 /workspace/openlibrary/
-  init: |
-    docker-compose build
-    docker-compose pull
+  init: docker-compose up --no-start
   command: docker-compose up
