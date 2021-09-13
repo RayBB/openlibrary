@@ -335,15 +335,18 @@ def get_availability(key, ids):
     try:
         response = requests.get(url, timeout=config_http_request_timeout)
         items = response.json().get('responses', {})
-        for ocaid in items:
-            items[ocaid] = update_availability_schema_to_v2(items[ocaid], ocaid)
+        for pkey in items:
+            ocaid = pkey if key == 'identifier' else items[pkey].get('identifier')
+            items[pkey] = update_availability_schema_to_v2(items[pkey], ocaid)
         return items
     except Exception as e:  # TODO: Narrow exception scope
         logger.exception("get_availability(%s)" % url)
         items = { 'error': 'request_timeout', 'details': str(e) }
 
-        for ocaid in ids:
-            items[ocaid] = update_availability_schema_to_v2(
+        for pkey in ids:
+            # key could be isbn, ocaid, or openlibrary_[work|edition]
+            ocaid = pkey if key == 'identifier' else None
+            items[pkey] = update_availability_schema_to_v2(
                 {'status': 'error'}, ocaid)
         return items
 
@@ -358,7 +361,7 @@ def get_availability_of_editions(ol_edition_ids):
     return get_availability('openlibrary_edition', ol_edition_ids)
 
 @public
-def add_availability(items):
+def add_availability(items, mode="identifier"):
     """
     Adds API v2 'availability' key to dicts
     :param list of dict items: items with fields containing ocaids
@@ -391,12 +394,20 @@ def add_availability(items):
             if item.get(field):
                 return item[field][0] if isinstance(item[field], list) else item[field]
 
-    ocaids = [ocaid for ocaid in map(get_ocaid, items) if ocaid]
-    availabilities = get_availability_of_ocaids(ocaids)
-    for item in items:
-        ocaid = get_ocaid(item)
-        if ocaid:
-            item['availability'] = availabilities.get(ocaid)
+    if mode == "identifier":
+        ocaids = [ocaid for ocaid in map(get_ocaid, items) if ocaid]
+        availabilities = get_availability_of_ocaids(ocaids)
+        for item in items:
+            ocaid = get_ocaid(item)
+            if ocaid:
+                item['availability'] = availabilities.get(ocaid)
+    elif mode == "openlibrary_work":
+        _ids = [item['key'].split('/')[-1] for item in items]
+        availabilities = get_availability_of_works(_ids)
+        for item in items:
+            olid = item['key'].split('/')[-1]
+            if olid:
+                item['availability'] = availabilities.get(olid)
     return items
 
 @public
