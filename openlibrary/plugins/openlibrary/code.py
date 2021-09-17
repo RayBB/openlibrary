@@ -886,6 +886,8 @@ class Partials(delegate.page):
             content_type="application/json"
         )
 
+def is_openlibrary_host():
+    return "openlibrary.org" in os.environ.get("HTTP_HOST", "")
 
 def is_bot():
     r"""Generated on ol-www1 within /var/log/nginx with:
