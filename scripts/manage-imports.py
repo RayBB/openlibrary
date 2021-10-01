@@ -34,10 +34,9 @@ def ol_import_request(item, retries=5, servername=None, require_marc=True):
             time.sleep(5)
         try:
             ol = get_ol(servername=servername)
-            if item.ia_id:
-                return ol.import_ocaid(item.ia_id, require_marc=require_marc)
-            else:
+            if item.data:
                 return ol.import_data(item.data)
+            return ol.import_ocaid(item.ia_id, require_marc=require_marc)
         except IOError as e:
             logger.warning("Failed to contact OL server. error=%s", e)
         except OLError as e:
@@ -63,9 +62,7 @@ def do_import(item, servername=None, require_marc=True):
         item.set_status("failed", error='internal-error')
 
 
-def add_items(args):
-    batch_name = args[0]
-    filename = args[1]
+def add_items(batch_name, filename):
     batch = Batch.find(batch_name) or Batch.new(batch_name)
     batch.load_items(filename)
 
@@ -205,7 +202,7 @@ def main():
     if cmd == "import-ocaids":
         return import_ocaids(*args, **flags)
     if cmd == "add-items":
-        return add_items(args)
+        return add_items(*args)
     elif cmd == "add-new-scans":
         return add_new_scans(args)
     elif cmd == "import-batch":
