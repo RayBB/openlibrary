@@ -1,5 +1,0 @@
-steps:
-  - uses: actions/checkout@v3
-  - uses: codeatlasHQ/codebase-visualizer-action@v1-beta
-  	with:
-  	  sub_directory: src/example/  # optional
