@@ -1,4 +1,14 @@
 @import (less) "base/dl.less";
+@import (less) "components/nav-bar.less";
+
+@sidebar-width: 225px;
+@sidebar-width-with-margin: 60px + @sidebar-width;
+@test-body-mobile-width: 1060px;
+
+// allows smooth scrolling after clicking on book page jump links
+html {
+  scroll-behavior: smooth;
+}
 
 /* stylelint-disable no-descending-specificity */
 .workDetails {
@@ -29,7 +39,7 @@
 // Center (editionAbout)
 div.editionAbout {
   margin-bottom: 20px;
-  overflow: hidden;
+
   p {
     margin: 1em 0;
     font-size: 13px;
@@ -39,6 +49,9 @@ div.editionAbout {
     margin: 0;
   }
 
+  p.featured-count {
+    margin-bottom: 10px;
+  }
 }
 
 .work-title{
@@ -57,7 +70,6 @@ div.editionAbout {
 }
 
 .workFooter {
-  border-top: 1px solid @lighter-grey;
   ul.listLists {
     display: flex;
   }
@@ -81,6 +93,21 @@ div.editionAbout {
 
 .checkboxes input {
   vertical-align: middle;
+}
+
+.clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  overflow: hidden;
+
+  &:hover {
+    cursor: pointer;
+  }
+}
+
+.clamp::before {
+  content: attr(data-before);
 }
 
 .restricted-view{
@@ -129,48 +156,9 @@ h2.edition-byline {
   color: @grey;
 }
 
-.work-menu {
-  border-bottom: 1px solid @lighter-grey;
-  padding-bottom: 5px;
-  font-weight: bold;
-  margin-top: 20px;
-
-  &.sticky {
-    position: sticky;
-    top: 0;
-    display: block;
-    background: @white;
-    z-index: @z-index-level-3;
-    padding-top: 10px;
-  }
-}
-
-.work-menu li {
-  display: inline;
-  padding: 0 15px;
-  padding-bottom: 5px;
-  font-size: 13px;
-}
-
-.work-menu li a {
-  text-decoration: none;
-  color: @grey;
-}
-
-.work-menu li.selected {
-  border-bottom: 2px solid @link-blue;
-}
-
-.work-menu li:hover {
-  border-bottom: 2px solid @link-blue;
-}
-
-.work-menu li.selected a {
-  color: @link-blue;
-}
-
 a.section-anchor {
-  height: 45px;
+  scroll-margin-top: 70px;
+  height: 20px;
   display: block;
 }
 
@@ -212,7 +200,7 @@ div.editionTools {
   }
   div.edition {
     &Cover {
-      width: 225px;
+      width: @sidebar-width;
       margin-right: 1.5em;
       margin-bottom: 0;
     }
@@ -247,9 +235,37 @@ div.editionTools {
 
 .edition-omniline {
   display: flex;
-  border-top: 1px solid @lighter-grey;
-  border-bottom: 1px solid @lighter-grey;
-  margin: 20px 0 10px;
+  flex-direction: row;
+  padding: 10px;
+  margin-bottom: 10px;
+  overflow-x: auto;
+
+  &-item {
+    display: flex;
+    flex-direction: column;
+    justify-content: top;
+    align-items: center;
+    flex: 1;
+    padding: 9px;
+    margin: 0 4px;
+    border: 1px solid @lighter-grey;
+    border-radius: 5px;
+    font-size: .8em;
+    word-break: break-word;
+    text-align: center;
+    min-width: 100px;
+
+    div {
+      margin-bottom: 4px;
+      font-size: .9em;
+      color: @grey;
+      word-wrap: break-word;
+    }
+
+    a {
+      text-decoration: none;
+    }
+  }
 
   h4 {
     padding-right: 5px;
@@ -257,6 +273,20 @@ div.editionTools {
 
   h4:last-child {
     padding-right: 0;
+  }
+}
+
+@media only screen and (min-width: @width-breakpoint-tablet) {
+  .edition-omniline {
+    flex-direction: row;
+    justify-content: space-between;
+
+    &-item {
+      flex-direction: column;
+      justify-content: flex-start;
+      align-items: center;
+
+    }
   }
 }
 
@@ -268,7 +298,6 @@ div.editionTools {
 }
 
 .preview-languages {
-  margin-bottom: -30px !important;
   font-size: .8em;
   color: @grey;
 }
@@ -286,3 +315,23 @@ div.editionTools {
   justify-content: center;
   background: @lightest-grey;
 }
+
+.list-heading {
+  font-size: 1.2em;
+  font-weight: normal;
+  color: @link-blue;
+}
+@media only screen and (max-width: @width-breakpoint-desktop){
+  .desktop-book-header{
+    display: none;
+  }
+}
+
+.mobile-book-header {
+  h1 {
+    line-height: normal;
+  }
+}
+
+@import (less) "components/compact-title.less";
+@import (less) "components/check-in.less";

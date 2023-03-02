@@ -3,6 +3,7 @@ $def with (list)
 $var title: $list.name
 
 $putctx('cssfile', 'form')
+$putctx("show_ol_shell", False)
 
 $ page = safeint(query_param('page'), 1) - 1
 $ page_size = 10
@@ -45,7 +46,6 @@ $def render_seed_count(seed_count):
             <span class="image">
                 <a href="$seed.url"><img src="$cover_url" height="70"/></a>
             </span>
-            <span class="seed-key hidden">$seed.key</span>
             <div class="details">
                 <div class="resultTitle">
                     $if seed.type in ['edition', 'work']:

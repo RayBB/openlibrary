@@ -72,6 +72,25 @@ jQuery(function () {
         import(/* webpackChunkName: "details-polyfill" */ 'details-polyfill');
     }
 
+    // Polyfill for .matches()
+    if (!Element.prototype.matches) {
+        Element.prototype.matches =
+          Element.prototype.msMatchesSelector ||
+          Element.prototype.webkitMatchesSelector;
+    }
+
+    // Polyfill for .closest()
+    if (!Element.prototype.closest) {
+        Element.prototype.closest = function(s) {
+            let el = this;
+            do {
+                if (Element.prototype.matches.call(el, s)) return el;
+                el = el.parentElement || el.parentNode;
+            } while (el !== null && el.nodeType === 1);
+            return null;
+        };
+    }
+
     const $markdownTextAreas = $('textarea.markdown');
     // Live NodeList is cast to static array to avoid infinite loops
     const $carouselElements = $('.carousel--progressively-enhanced');
@@ -112,6 +131,7 @@ jQuery(function () {
     const classifications = document.querySelector('#classifications');
     const autocompleteLanguage = document.querySelector('.multi-input-autocomplete--language');
     const autocompleteWorks = document.querySelector('.multi-input-autocomplete--works');
+    const autocompleteSubjects = document.querySelector('.csv-autocomplete--subjects');
     const excerpts = document.getElementById('excerpts');
     const links = document.getElementById('links');
 
@@ -153,6 +173,9 @@ jQuery(function () {
                 if (autocompleteWorks) {
                     module.initWorksMultiInputAutocomplete();
                 }
+                if (autocompleteSubjects) {
+                    module.initSubjectsAutocomplete();
+                }
             });
     }
 
@@ -177,9 +200,18 @@ jQuery(function () {
             .then(module => module.initRealTimeValidation());
     }
     // conditionally load readmore button based on class in the page
-    if (document.getElementsByClassName('read-more-button').length) {
+    const readMoreButtons = document.getElementsByClassName('read-more-button');
+    const clampers = document.querySelectorAll('.clamp');
+    if (readMoreButtons.length || clampers.length) {
         import(/* webpackChunkName: "readmore" */ './readmore.js')
-            .then(module => module.initReadMoreButton());
+            .then(module => {
+                if (readMoreButtons.length) {
+                    module.initReadMoreButton();
+                }
+                if (clampers.length) {
+                    module.initClampers(clampers);
+                }
+            });
     }
     // conditionally loads Goodreads import based on class in the page
     if (document.getElementsByClassName('import-table').length) {
@@ -218,10 +250,19 @@ jQuery(function () {
             .then((module) => module.init());
     }
 
+    if (document.getElementsByClassName('toast').length) {
+        import(/* webpackChunkName: "Toast" */ './Toast')
+            .then((module) => {
+                Array.from(document.getElementsByClassName('toast'))
+                    .forEach(el => new module.Toast($(el)));
+            });
+    }
+
     const $observationModalLinks = $('.observations-modal-link');
     const $notesModalLinks = $('.notes-modal-link');
-    const $notesPageButtons = $('.note-page-buttons')
-    if ($observationModalLinks.length || $notesModalLinks.length || $notesPageButtons.length) {
+    const $notesPageButtons = $('.note-page-buttons');
+    const $shareModalLinks = $('.share-modal-link');
+    if ($observationModalLinks.length || $notesModalLinks.length || $notesPageButtons.length || $shareModalLinks.length) {
         import(/* webpackChunkName: "modal-links" */ './modals')
             .then(module => {
                 if ($observationModalLinks.length) {
@@ -233,8 +274,12 @@ jQuery(function () {
                 if ($notesPageButtons.length) {
                     module.addNotesPageButtonListeners();
                 }
+                if ($shareModalLinks.length) {
+                    module.initShareModal($shareModalLinks)
+                }
             });
     }
+
 
     const manageCoversElement = document.getElementsByClassName('manageCovers').length;
     const addCoversElement = document.getElementsByClassName('imageIntro').length;
@@ -265,9 +310,22 @@ jQuery(function () {
         document.getElementById('password').value = 'admin123'
         document.getElementById('remember').checked = true
     }
-    if (document.getElementById('adminLinks')) {
+    const anonymizationButton = document.querySelector('.account-anonymization-button')
+    const adminLinks = document.getElementById('adminLinks')
+    const confirmButtons = document.querySelectorAll('.do-confirm')
+    if (adminLinks || anonymizationButton || confirmButtons.length) {
         import(/* webpackChunkName: "admin" */ './admin')
-            .then((module) => module.initAdmin());
+            .then(module => {
+                if (adminLinks) {
+                    module.initAdmin();
+                }
+                if (anonymizationButton) {
+                    module.initAnonymizationButton(anonymizationButton);
+                }
+                if (confirmButtons.length) {
+                    module.initConfirmationButtons(confirmButtons);
+                }
+            });
     }
 
     if (window.matchMedia('(display-mode: standalone)').matches) {
@@ -280,6 +338,12 @@ jQuery(function () {
             .then((module) => module.initSearchFacets());
     }
 
+    // Conditionally load Integrated Librarian Environment
+    if (document.getElementsByClassName('show-librarian-tools').length) {
+        import(/* webpackChunkName: "ile" */ './ile')
+            .then((module) => module.init());
+    }
+
     if ($('#cboxPrevious').length) {
         $('#cboxPrevious').attr({'aria-label': 'Previous button', 'aria-hidden': 'true'});
     }
@@ -288,6 +352,69 @@ jQuery(function () {
     }
     if ($('#cboxSlideshow').length) {
         $('#cboxSlideshow').attr({'aria-label': 'Slideshow button', 'aria-hidden': 'true'});
+    }
+
+    // "Want to Read" buttons:
+    const droppers = document.getElementsByClassName('widget-add');
+
+    // Async lists components:
+    const wtrLoadingIndicator = document.querySelector('.list-loading-indicator')
+    const overviewLoadingIndicator = document.querySelector('.list-overview-loading-indicator')
+
+    if (droppers.length || wtrLoadingIndicator || overviewLoadingIndicator) {
+        import(/* webpackChunkName: "lists" */ './lists')
+            .then((module) => {
+                if (droppers.length) {
+                    module.initDroppers(droppers);
+                    // Removable list items:
+                    // TODO: Is this the correct place to initalize these?
+                    const actionableListItems = document.querySelectorAll('.actionable-item')
+                    module.registerListItems(actionableListItems);
+                }
+                if (wtrLoadingIndicator || overviewLoadingIndicator) {
+                    module.initListLoading(wtrLoadingIndicator, overviewLoadingIndicator)
+                }
+            }
+            );
+    }
+
+    const nativeDialogs = document.querySelectorAll('.native-dialog')
+    if (nativeDialogs.length) {
+        import(/* webpackChunkName: "dialog" */ './native-dialog')
+            .then(module => module.initDialogs(nativeDialogs))
+    }
+    const setGoalLinks = document.querySelectorAll('.set-reading-goal-link')
+    const goalEditLinks = document.querySelectorAll('.edit-reading-goal-link')
+    const goalSubmitButtons = document.querySelectorAll('.reading-goal-submit-button')
+    const checkInForms = document.querySelectorAll('.check-in')
+    const checkInPrompts = document.querySelectorAll('.check-in-prompt')
+    const checkInEditLinks = document.querySelectorAll('.prompt-edit-date')
+    const yearElements = document.querySelectorAll('.use-local-year')
+    if (setGoalLinks.length || goalEditLinks.length || goalSubmitButtons.length || checkInForms.length || checkInPrompts.length || checkInEditLinks.length || yearElements.length) {
+        import(/* webpackChunkName: "check-ins" */ './check-ins')
+            .then((module) => {
+                if (setGoalLinks.length) {
+                    module.initYearlyGoalPrompt(setGoalLinks)
+                }
+                if (goalEditLinks.length) {
+                    module.initGoalEditLinks(goalEditLinks)
+                }
+                if (goalSubmitButtons.length) {
+                    module.initGoalSubmitButtons(goalSubmitButtons)
+                }
+                if (checkInForms.length) {
+                    module.initCheckInForms(checkInForms)
+                }
+                if (checkInPrompts.length) {
+                    module.initCheckInPrompts(checkInPrompts)
+                }
+                if (checkInEditLinks.length) {
+                    module.initCheckInEdits(checkInEditLinks)
+                }
+                if (yearElements.length) {
+                    module.displayLocalYear(yearElements)
+                }
+            })
     }
 
     $(document).on('click', '.slide-toggle', function () {
@@ -308,4 +435,57 @@ jQuery(function () {
             .find('details')
             .removeAttr('open');
     });
+
+    // Prevent default star rating behavior:
+    const ratingForms = document.querySelectorAll('.star-rating-form')
+    if (ratingForms.length) {
+        import(/* webpackChunkName: "star-ratings" */'./handlers')
+            .then((module) => module.initRatingHandlers(ratingForms));
+    }
+
+    const navbar = document.querySelector('.work-menu');
+    if (navbar) {
+        const compactTitle = document.querySelector('.compact-title')
+        // Add position-aware navbar JS:
+        import(/* webpackChunkName: "nav-bar" */ './edition-nav-bar')
+            .then((module) => module.initNavbar(navbar));
+        // Add sticky title component animations:
+        import(/* webpackChunkName: "compact-title" */ './compact-title')
+            .then((module) => module.initCompactTitle(navbar, compactTitle))
+    }
+
+    // Add functionality for librarian merge request table:
+    const mergeRequestCloseLinks = document.querySelectorAll('.mr-close-link')
+    const mergeRequestResolveLinks = document.querySelectorAll('.mr-resolve-link')
+    const mergeRequestCommentButtons = document.querySelectorAll('.mr-comment-btn')
+    const showCommentsLinks = document.querySelectorAll('.comment-expand')
+    const unassignElements = document.querySelectorAll('.mr-unassign')
+
+    if (mergeRequestCloseLinks.length || mergeRequestCommentButtons.length || showCommentsLinks.length || mergeRequestResolveLinks.length || unassignElements.length) {
+        import(/* webpackChunkName: "merge-request-table" */'./merge-request-table')
+            .then(module => {
+                if (mergeRequestCloseLinks.length) {
+                    module.initCloseLinks(mergeRequestCloseLinks)
+                }
+                if (mergeRequestCommentButtons.length) {
+                    module.initCommenting(mergeRequestCommentButtons)
+                }
+                if (showCommentsLinks.length) {
+                    module.initShowAllCommentsLinks(showCommentsLinks)
+                }
+                if (mergeRequestResolveLinks.length) {
+                    module.initRequestClaiming(mergeRequestResolveLinks)
+                }
+                if (unassignElements.length) {
+                    module.initUnassignment(unassignElements)
+                }
+            })
+    }
+
+    // Add new providers in edit edition view:
+    const addProviderRowLink = document.querySelector('#add-new-provider-row')
+    if (addProviderRowLink) {
+        import(/* webpackChunkName "add-provider-link" */ './add_provider')
+            .then(module => module.initAddProviderRowLink(addProviderRowLink))
+    }
 });

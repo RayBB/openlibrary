@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """Script to generate XML sitemap of openlibrary.org website.
 
 USAGE:
@@ -5,13 +6,13 @@ USAGE:
     python sitemaps.py suffix dump.txt.gz
 """
 
-import datetime
 import gzip
 import itertools
 import json
+import logging
 import os
 import re
-import time
+from datetime import datetime
 
 import web
 
@@ -37,11 +38,23 @@ t_siteindex = """$def with (names, timestamp)
 </sitemapindex>
 """
 
+logger = logging.getLogger(__file__)
+logger.setLevel(logging.DEBUG)
+
 sitemap = web.template.Template(t_sitemap)
 siteindex = web.template.Template(t_siteindex)
 
+
+def log(*args) -> None:
+    args_str = " ".join(str(a) for a in args)
+    msg = f"{datetime.now():%Y-%m-%d %H:%M:%S} [openlibrary.dump] {args_str}"
+    logger.info(msg)
+    print(msg, file=sys.stderr)
+
+
 def xopen(filename):
     return gzip.open(filename) if filename.endswith(".gz") else open(filename)
+
 
 def urlsafe(name):
     """Slugifies the name to produce OL url slugs
@@ -57,9 +70,10 @@ def urlsafe(name):
     space = ' \n\r'
 
     unsafe = reserved + delims + unwise + space
-    pattern = '[%s]+' % "".join(re.escape(c) for c in unsafe)
+    pattern = f"[{''.join(re.escape(c) for c in unsafe)}]+"
     safepath_re = re.compile(pattern)
     return safepath_re.sub('_', name).replace(' ', '-').strip('_')[:100]
+
 
 def process_dump(dumpfile):
     """Generates a summary file used to generate sitemaps.
@@ -72,8 +86,7 @@ def process_dump(dumpfile):
             continue
 
         doc = json.loads(jsontext)
-        title = doc.get('name', '') if type == '/type/author' \
-                else doc.get('title', '')
+        title = doc.get('name', '') if type == '/type/author' else doc.get('title', '')
 
         path = key + "/" + urlsafe(title.strip())
 
@@ -82,7 +95,9 @@ def process_dump(dumpfile):
         if sortkey:
             yield [sortkey, path, last_modified]
 
-re_key = re.compile("^/(authors|works)/OL\d+[AMW]$")
+
+re_key = re.compile(r"^/(authors|works)/OL\d+[AMW]$")
+
 
 def get_sort_key(key):
     """Returns a sort key used to group urls in 10K batches.
@@ -97,6 +112,7 @@ def get_sort_key(key):
     num = int(web.numify(key)) / 10000
     return "%s_%04d" % (prefix, num)
 
+
 def generate_sitemaps(filename):
     rows = (line.strip().split("\t") for line in open(filename))
     for sortkey, chunk in itertools.groupby(rows, lambda row: row[0]):
@@ -110,15 +126,17 @@ def generate_sitemaps(filename):
             things.append(web.storage(path=path, last_modified=last_modified))
 
         if things:
-            write("sitemaps/sitemap_%s.xml.gz" % sortkey, sitemap(things))
+            write(f"sitemaps/sitemap_{sortkey}.xml.gz", sitemap(things))
+
 
 def generate_siteindex():
     filenames = sorted(os.listdir("sitemaps"))
     if "siteindex.xml.gz" in filenames:
         filenames.remove("siteindex.xml.gz")
-    timestamp = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+    timestamp = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
     index = siteindex(filenames, timestamp)
     write("sitemaps/siteindex.xml.gz", index)
+
 
 def write(path, text):
     try:
@@ -127,13 +145,15 @@ def write(path, text):
         with gzip.open(path, 'w') as f:
             f.write(text.encode())
     except Exception as e:
-        print('write fail {}'.format(e))
-    #os.system("gzip " + path)
+        log(f'write fail {e}')
+    # os.system("gzip " + path)
+
 
 def write_tsv(path, rows):
     lines = ("\t".join(row) + "\n" for row in rows)
     with open(path, "w") as f:
         f.writelines(lines)
+
 
 def system_memory():
     """Returns system memory in MB."""
@@ -141,19 +161,16 @@ def system_memory():
         x = os.popen("cat /proc/meminfo | grep MemTotal | sed 's/[^0-9]//g'").read()
         # proc gives memory in KB, converting it to MB
         return int(x) // 1024
-    except IOError:
+    except OSError:
         # default to 1024MB
         return 1024
 
+
 def system(cmd):
     log("executing:", cmd)
-    status = os.system(cmd)
-    if status != 0:
+    if (status := os.system(cmd)) != 0:
         raise Exception("%r failed with exit status: %d" % (cmd, status))
 
-def log(*args):
-    msg = " ".join(map(str, args))
-    print("%s %s" % (time.asctime(), msg))
 
 def main(dumpfile):
     system("rm -rf sitemaps sitemaps_data.txt*; mkdir sitemaps")
@@ -164,7 +181,7 @@ def main(dumpfile):
 
     log("sorting sitemaps_data.txt")
     # use half of system of 3GB whichever is smaller
-    sort_mem = min(system_memory()/2, 3072)
+    sort_mem = min(system_memory() / 2, 3072)
     system("sort -S%dM sitemaps_data.txt > sitemaps_data.txt.sorted" % sort_mem)
 
     log("generating sitemaps")
@@ -173,6 +190,8 @@ def main(dumpfile):
 
     log("done")
 
+
 if __name__ == "__main__":
     import sys
+
     main(sys.argv[1])

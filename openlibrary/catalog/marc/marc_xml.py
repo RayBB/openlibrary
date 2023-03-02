@@ -3,8 +3,6 @@ from unicodedata import normalize
 
 from openlibrary.catalog.marc.marc_base import MarcBase, MarcException
 
-import six
-
 data_tag = '{http://www.loc.gov/MARC21/slim}datafield'
 control_tag = '{http://www.loc.gov/MARC21/slim}controlfield'
 subfield_tag = '{http://www.loc.gov/MARC21/slim}subfield'
@@ -12,22 +10,28 @@ leader_tag = '{http://www.loc.gov/MARC21/slim}leader'
 record_tag = '{http://www.loc.gov/MARC21/slim}record'
 collection_tag = '{http://www.loc.gov/MARC21/slim}collection'
 
+
 class BlankTag(MarcException):
     pass
 
+
 class BadSubtag(MarcException):
     pass
+
 
 def read_marc_file(f):
     for event, elem in etree.iterparse(f, tag=record_tag):
         yield MarcXml(elem)
         elem.clear()
 
+
 def norm(s):
-    return normalize('NFC', six.text_type(s.replace(u'\xa0', ' ')))
+    return normalize('NFC', str(s.replace('\xa0', ' ')))
+
 
 def get_text(e):
-    return norm(e.text) if e.text else u''
+    return norm(e.text) if e.text else ''
+
 
 class DataField:
     def __init__(self, element):
@@ -35,14 +39,20 @@ class DataField:
         self.element = element
 
     def remove_brackets(self):
-        f = self.element[0]
-        l = self.element[-1]
-        if f.text and l.text and f.text.startswith('[') and l.text.endswith(']'):
-            f.text = f.text[1:]
-            l.text = l.text[:-1]
+        first = self.element[0]
+        last = self.element[-1]
+        if (
+            first.text
+            and last.text
+            and first.text.startswith('[')
+            and last.text.endswith(']')
+        ):
+            first.text = first.text[1:]
+            last.text = last.text[:-1]
 
     def ind1(self):
         return self.element.attrib['ind1']
+
     def ind2(self):
         return self.element.attrib['ind2']
 
@@ -79,6 +89,7 @@ class DataField:
             if v:
                 contents.setdefault(k, []).append(v)
         return contents
+
 
 class MarcXml(MarcBase):
     def __init__(self, record):

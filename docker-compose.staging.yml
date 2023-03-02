@@ -5,7 +5,7 @@
 ## docker-compose up -d
 ##
 
-version: "3.1"
+version: "3.8"
 services:
   web:
     build:
@@ -30,6 +30,9 @@ services:
       # The above volume mounts are required so that the local dev bind mount below
       # does not clobber the data generated inside the image / container
       - .:/openlibrary
+
+  memcached:
+    restart: unless-stopped
 
 volumes:
   ol-vendor:

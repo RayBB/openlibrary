@@ -76,6 +76,10 @@ export default {
             // if no identifier selected don't execute
             if (!this.setButtonEnabled) return
 
+            if (this.selectedIdentifier === 'isni') {
+                this.inputValue = this.inputValue.replace(/\s/g, '')
+            }
+
             // We use $set otherwise we wouldn't get the reactivity desired
             // See https://vuejs.org/v2/guide/reactivity.html#Change-Detection-Caveats
             this.$set(this.assignedIdentifiers, this.selectedIdentifier, this.inputValue);
@@ -95,6 +99,17 @@ export default {
                 .map(([name, value]) => `<input type="hidden" name="author--remote_ids--${name}" value="${value}"/>`)
                 .join('');
             document.querySelector(this.output_selector).innerHTML = html;
+        },
+        selectIdentifierByInputValue: function() {
+            // Selects the dropdown identifier based on the input value
+            // Only supports wikidata and isni because the other identifiers are just numbers
+            const wikiDatas = this.inputValue.match(/^Q[1-9]\d*$/i);
+            const isnis = this.inputValue.match(/^\d{15}[\dX]$/i);
+            if (wikiDatas?.length > 0){
+                this.selectedIdentifier = 'wikidata';
+            } else if (isnis?.length > 0){
+                this.selectedIdentifier = 'isni';
+            }
         }
     },
     created: function(){
@@ -105,7 +120,11 @@ export default {
             {
                 handler: function(){this.createHiddenInputs()},
                 deep: true
-            }
+            },
+        inputValue:
+            {
+                handler: function(){this.selectIdentifierByInputValue()},
+            },
     }
 }
 </script>

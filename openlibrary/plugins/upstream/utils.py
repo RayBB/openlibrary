@@ -1,23 +1,33 @@
-from typing import List, Union, Tuple, Any
+import functools
+from typing import Any
+from collections.abc import Iterable, Iterator
+import unicodedata
 
 import web
 import json
 import babel
 import babel.core
 import babel.dates
+from babel.lists import format_list
 from collections import defaultdict
 import re
 import random
 import xml.etree.ElementTree as etree
 import datetime
 import logging
+from html.parser import HTMLParser
 
 import requests
 
-import six
-from six.moves import urllib
-from six.moves.collections_abc import MutableMapping
-from six.moves.urllib.parse import parse_qs, urlencode as parse_urlencode, urlparse, urlunparse
+from html import unescape
+import urllib
+from collections.abc import MutableMapping
+from urllib.parse import (
+    parse_qs,
+    urlencode as parse_urlencode,
+    urlparse,
+    urlunparse,
+)
 
 from infogami import config
 from infogami.utils import view, delegate, stats
@@ -26,32 +36,48 @@ from infogami.utils.macro import macro
 from infogami.utils.context import context
 from infogami.infobase.client import Thing, Changeset, storify
 
-from openlibrary.core.helpers import commify, parse_datetime
+from openlibrary.core.helpers import commify, parse_datetime, truncate
 from openlibrary.core.middleware import GZipMiddleware
-from openlibrary.core import cache, ab
+from openlibrary.core import cache
+
+
+class LanguageMultipleMatchError(Exception):
+    """Exception raised when more than one possible language match is found."""
+
+    def __init__(self, language_name):
+        self.language_name = language_name
+
+
+class LanguageNoMatchError(Exception):
+    """Exception raised when no matching languages are found."""
+
+    def __init__(self, language_name):
+        self.language_name = language_name
+
 
 class MultiDict(MutableMapping):
     """Ordered Dictionary that can store multiple values.
 
-        >>> d = MultiDict()
-        >>> d['x'] = 1
-        >>> d['x'] = 2
-        >>> d['y'] = 3
-        >>> d['x']
-        2
-        >>> d['y']
-        3
-        >>> d['z']
-        Traceback (most recent call last):
-            ...
-        KeyError: 'z'
-        >>> list(d)
-        ['x', 'x', 'y']
-        >>> list(d.items())
-        [('x', 1), ('x', 2), ('y', 3)]
-        >>> list(d.multi_items())
-        [('x', [1, 2]), ('y', [3])]
+    >>> d = MultiDict()
+    >>> d['x'] = 1
+    >>> d['x'] = 2
+    >>> d['y'] = 3
+    >>> d['x']
+    2
+    >>> d['y']
+    3
+    >>> d['z']
+    Traceback (most recent call last):
+        ...
+    KeyError: 'z'
+    >>> list(d)
+    ['x', 'x', 'y']
+    >>> list(d.items())
+    [('x', 1), ('x', 2), ('y', 3)]
+    >>> list(d.multi_items())
+    [('x', [1, 2]), ('y', [3])]
     """
+
     def __init__(self, items=(), **kw):
         self._items = []
 
@@ -60,8 +86,7 @@ class MultiDict(MutableMapping):
         self.update(kw)
 
     def __getitem__(self, key):
-        values = self.getall(key)
-        if values:
+        if values := self.getall(key):
             return values[-1]
         else:
             raise KeyError(key)
@@ -73,8 +98,7 @@ class MultiDict(MutableMapping):
         self._items = [(k, v) for k, v in self._items if k != key]
 
     def __iter__(self):
-        for key in self.keys():
-            yield key
+        yield from self.keys()
 
     def __len__(self):
         return len(list(self.keys()))
@@ -103,6 +127,7 @@ class MultiDict(MutableMapping):
             d[k].append(v)
         return items
 
+
 @macro
 @public
 def render_template(name, *a, **kw):
@@ -111,7 +136,7 @@ def render_template(name, *a, **kw):
     return render[name](*a, **kw)
 
 
-def kebab_case(upper_camel_case):
+def kebab_case(upper_camel_case: str) -> str:
     """
     :param str upper_camel_case: Text in upper camel case (e.g. "HelloWorld")
     :return: text in kebab case (e.g. 'hello-world')
@@ -126,7 +151,7 @@ def kebab_case(upper_camel_case):
 
 
 @public
-def render_component(name, attrs=None, json_encode=True):
+def render_component(name: str, attrs: dict | None = None, json_encode: bool = True):
     """
     :param str name: Name of the component (excluding extension)
     :param dict attrs: attributes to add to the component element
@@ -135,7 +160,7 @@ def render_component(name, attrs=None, json_encode=True):
 
     attrs = attrs or {}
     attrs_str = ''
-    for (key, val) in attrs.items():
+    for key, val in attrs.items():
         if json_encode and isinstance(val, dict) or isinstance(val, list):
             val = json.dumps(val)
             # On the Vue side use decodeURIComponent to decode
@@ -153,10 +178,10 @@ def render_component(name, attrs=None, json_encode=True):
         html += '<script src="%s"></script>' % url
         included.append(name)
 
-    html += '<ol-%(name)s %(attrs)s></ol-%(name)s>' % {
-        'name': kebab_case(name),
-        'attrs': attrs_str,
-    }
+    html += '<ol-{name} {attrs}></ol-{name}>'.format(
+        name=kebab_case(name),
+        attrs=attrs_str,
+    )
     return html
 
 
@@ -165,10 +190,12 @@ def get_error(name, *args):
     """Return error with the given name from errors.tmpl template."""
     return get_message_from_template("errors", name, args)
 
+
 @public
 def get_message(name, *args):
     """Return message with given name from messages.tmpl template"""
     return get_message_from_template("messages", name, args)
+
 
 def get_message_from_template(template_name, name, args):
     d = render_template(template_name).get("messages", {})
@@ -179,12 +206,13 @@ def get_message_from_template(template_name, name, args):
     else:
         return msg
 
+
 @public
 def list_recent_pages(path, limit=100, offset=0):
     """Lists all pages with name path/* in the order of last_modified."""
     q = {}
 
-    q['key~' ] = path + '/*'
+    q['key~'] = path + '/*'
     # don't show /type/delete and /type/redirect
     q['a:type!='] = '/type/delete'
     q['b:type!='] = '/type/redirect'
@@ -197,19 +225,31 @@ def list_recent_pages(path, limit=100, offset=0):
     # q['type'] != '/type/delete'
     return web.ctx.site.get_many(web.ctx.site.things(q))
 
+
+@public
+def commify_list(items: Iterable[Any]):
+    # Not sure why lang is sometimes ''
+    lang = web.ctx.lang or 'en'
+    # If the list item is a template/html element, we strip it
+    # so that there is no space before the comma.
+    return format_list([str(x).strip() for x in items], locale=lang)
+
+
 @public
 def json_encode(d):
     return json.dumps(d)
 
-def unflatten(d, seperator="--"):
+
+def unflatten(d, separator="--"):
     """Convert flattened data into nested form.
 
-        >>> unflatten({"a": 1, "b--x": 2, "b--y": 3, "c--0": 4, "c--1": 5})
-        {'a': 1, 'c': [4, 5], 'b': {'y': 3, 'x': 2}}
-        >>> unflatten({"a--0--x": 1, "a--0--y": 2, "a--1--x": 3, "a--1--y": 4})
-        {'a': [{'x': 1, 'y': 2}, {'x': 3, 'y': 4}]}
+    >>> unflatten({"a": 1, "b--x": 2, "b--y": 3, "c--0": 4, "c--1": 5})
+    {'a': 1, 'c': [4, 5], 'b': {'y': 3, 'x': 2}}
+    >>> unflatten({"a--0--x": 1, "a--0--y": 2, "a--1--x": 3, "a--1--y": 4})
+    {'a': [{'x': 1, 'y': 2}, {'x': 3, 'y': 4}]}
 
     """
+
     def isint(k):
         try:
             int(k)
@@ -219,7 +259,7 @@ def unflatten(d, seperator="--"):
 
     def setvalue(data, k, v):
         if '--' in k:
-            k, k2 = k.split(seperator, 1)
+            k, k2 = k.split(separator, 1)
             setvalue(data.setdefault(k, {}), k2, v)
         else:
             data[k] = v
@@ -269,22 +309,15 @@ def fuzzy_find(value, options, stopwords=None):
     # take the option with maximum score
     return max(options, key=score.__getitem__)
 
+
 @public
 def radio_input(checked=False, **params):
     params['type'] = 'radio'
     if checked:
         params['checked'] = "checked"
-    return "<input %s />" % " ".join(['%s="%s"' % (k, web.websafe(v)) for k, v in params.items()])
-
-@public
-def radio_list(name, args, value):
-    html = []
-    for arg in args:
-        if isinstance(arg, tuple):
-            arg, label = arg
-        else:
-            label = arg
-        html.append(radio_input())
+    return "<input %s />" % " ".join(
+        [f'{k}="{web.websafe(v)}"' for k, v in params.items()]
+    )
 
 
 def get_coverstore_url() -> str:
@@ -316,6 +349,7 @@ def _get_changes_v1_raw(query, revision=None):
 
     return versions
 
+
 def get_changes_v1(query, revision=None):
     # uses the cached function _get_changes_v1_raw to get the raw data
     # and processes to before returning.
@@ -326,6 +360,7 @@ def get_changes_v1(query, revision=None):
         return v
 
     return [process(v) for v in _get_changes_v1_raw(query, revision)]
+
 
 def _get_changes_v2_raw(query, revision=None):
     """Returns the raw recentchanges response.
@@ -338,8 +373,10 @@ def _get_changes_v2_raw(query, revision=None):
     changes = web.ctx.site.recentchanges(query)
     return [c.dict() for c in changes]
 
+
 # XXX-Anand: disabled temporarily to avoid too much memcache usage.
-#_get_changes_v2_raw = cache.memcache_memoize(_get_changes_v2_raw, key_prefix="upstream._get_changes_v2_raw", timeout=10*60)
+# _get_changes_v2_raw = cache.memcache_memoize(_get_changes_v2_raw, key_prefix="upstream._get_changes_v2_raw", timeout=10*60)
+
 
 def get_changes_v2(query, revision=None):
     page = web.ctx.site.get(query['key'])
@@ -364,28 +401,38 @@ def get_changes_v2(query, revision=None):
         return change
 
     def get_comment(change):
-        t = get_template("recentchanges/" + change.kind + "/comment") or get_template("recentchanges/default/comment")
+        t = get_template("recentchanges/" + change.kind + "/comment") or get_template(
+            "recentchanges/default/comment"
+        )
         return t(change, page)
 
     query['key'] = page.key
     changes = _get_changes_v2_raw(query, revision=page.revision)
     return [process_change(c) for c in changes]
 
+
 def get_changes(query, revision=None):
     return get_changes_v2(query, revision=revision)
 
+
 @public
 def get_history(page):
-    h = web.storage(revision=page.revision, lastest_revision=page.revision, created=page.created)
+    h = web.storage(
+        revision=page.revision, lastest_revision=page.revision, created=page.created
+    )
     if h.revision < 5:
         h.recent = get_changes({"key": page.key, "limit": 5}, revision=page.revision)
         h.initial = h.recent[-1:]
         h.recent = h.recent[:-1]
     else:
-        h.initial = get_changes({"key": page.key, "limit": 1, "offset": h.revision-1}, revision=page.revision)
+        h.initial = get_changes(
+            {"key": page.key, "limit": 1, "offset": h.revision - 1},
+            revision=page.revision,
+        )
         h.recent = get_changes({"key": page.key, "limit": 4}, revision=page.revision)
 
     return h
+
 
 @public
 def get_version(key, revision):
@@ -394,22 +441,30 @@ def get_version(key, revision):
     except IndexError:
         return None
 
+
 @public
 def get_recent_author(doc):
-    versions = get_changes_v1({'key': doc.key, 'limit': 1, "offset": 0}, revision=doc.revision)
+    versions = get_changes_v1(
+        {'key': doc.key, 'limit': 1, "offset": 0}, revision=doc.revision
+    )
     if versions:
         return versions[0].author
 
+
 @public
 def get_recent_accounts(limit=5, offset=0):
-    versions = web.ctx.site.versions({'type': '/type/user', 'revision': 1, 'limit': limit, 'offset': offset})
+    versions = web.ctx.site.versions(
+        {'type': '/type/user', 'revision': 1, 'limit': limit, 'offset': offset}
+    )
     return web.ctx.site.get_many([v.key for v in versions])
+
 
 def get_locale():
     try:
         return babel.Locale(web.ctx.get("lang") or "en")
     except babel.core.UnknownLocaleError:
         return babel.Locale("en")
+
 
 @public
 def process_version(v):
@@ -420,17 +475,23 @@ def process_version(v):
     ]
     if v.key.startswith('/books/') and not v.get('machine_comment'):
         thing = v.get('thing') or web.ctx.site.get(v.key, v.revision)
-        if thing.source_records and v.revision == 1 or (v.comment and v.comment.lower() in comments):
+        if (
+            thing.source_records
+            and v.revision == 1
+            or (v.comment and v.comment.lower() in comments)
+        ):
             marc = thing.source_records[-1]
             if marc.startswith('marc:'):
-                v.machine_comment = marc[len("marc:"):]
+                v.machine_comment = marc[len("marc:") :]
             else:
                 v.machine_comment = marc
     return v
 
+
 @public
 def is_thing(t):
     return isinstance(t, Thing)
+
 
 @public
 def putctx(key, value):
@@ -438,55 +499,52 @@ def putctx(key, value):
     context[key] = value
     return ""
 
+
 class Metatag:
     def __init__(self, tag="meta", **attrs):
         self.tag = tag
         self.attrs = attrs
 
     def __str__(self):
-        attrs = ' '.join(
-            '%s="%s"' % (k, websafe(v))
-            for k, v in self.attrs.items())
-        return '<%s %s />' % (self.tag, attrs)
+        attrs = ' '.join(f'{k}="{websafe(v)}"' for k, v in self.attrs.items())
+        return f'<{self.tag} {attrs} />'
 
     def __repr__(self):
         return 'Metatag(%s)' % str(self)
+
 
 @public
 def add_metatag(tag="meta", **attrs):
     context.setdefault('metatags', [])
     context.metatags.append(Metatag(tag, **attrs))
 
+
 @public
 def url_quote(text):
-    if isinstance(text, six.text_type):
+    if isinstance(text, str):
         text = text.encode('utf8')
     return urllib.parse.quote_plus(text)
 
 
 @public
-def urlencode(dict_or_list_of_tuples: Union[dict, List[Tuple[str, Any]]]) -> str:
+def urlencode(dict_or_list_of_tuples: dict | list[tuple[str, Any]]) -> str:
     """
     You probably want to use this, if you're looking to urlencode parameters. This will
     encode things to utf8 that would otherwise cause urlencode to error.
     """
-    from six.moves.urllib.parse import urlencode as og_urlencode
+    from urllib.parse import urlencode as og_urlencode
+
     tuples = dict_or_list_of_tuples
     if isinstance(dict_or_list_of_tuples, dict):
-        tuples = dict_or_list_of_tuples.items()
-    params = [
-        (k, v.encode('utf-8') if isinstance(v, six.text_type) else v)
-        for (k, v) in tuples
-    ]
+        tuples = list(dict_or_list_of_tuples.items())
+    params = [(k, v.encode('utf-8') if isinstance(v, str) else v) for (k, v) in tuples]
     return og_urlencode(params)
 
 
 @public
 def entity_decode(text):
-    try:
-        return six.moves.html_parser.unescape(text)
-    except AttributeError:
-        return six.moves.html_parser.HTMLParser().unescape(text)
+    return unescape(text)
+
 
 @public
 def set_share_links(url='#', title='', view_context=None):
@@ -501,39 +559,50 @@ def set_share_links(url='#', title='', view_context=None):
     encoded_url = url_quote(url)
     text = url_quote("Check this out: " + entity_decode(title))
     links = [
-        {'text': 'Facebook', 'url': 'https://www.facebook.com/sharer/sharer.php?u=' + encoded_url},
-        {'text': 'Twitter', 'url': 'https://twitter.com/intent/tweet?url=%s&via=openlibrary&text=%s' % (encoded_url, text)},
-        {'text': 'Pinterest', 'url': 'https://pinterest.com/pin/create/link/?url=%s&description=%s' % (encoded_url, text)}
+        {
+            'text': 'Facebook',
+            'url': 'https://www.facebook.com/sharer/sharer.php?u=' + encoded_url,
+        },
+        {
+            'text': 'Twitter',
+            'url': f'https://twitter.com/intent/tweet?url={encoded_url}&via=openlibrary&text={text}',
+        },
+        {
+            'text': 'Pinterest',
+            'url': f'https://pinterest.com/pin/create/link/?url={encoded_url}&description={text}',
+        },
     ]
     view_context.share_links = links
 
+
 def pad(seq, size, e=None):
     """
-        >>> pad([1, 2], 4, 0)
-        [1, 2, 0, 0]
+    >>> pad([1, 2], 4, 0)
+    [1, 2, 0, 0]
     """
     seq = seq[:]
     while len(seq) < size:
         seq.append(e)
     return seq
 
+
 def parse_toc_row(line):
     """Parse one row of table of contents.
 
-        >>> def f(text):
-        ...     d = parse_toc_row(text)
-        ...     return (d['level'], d['label'], d['title'], d['pagenum'])
-        ...
-        >>> f("* chapter 1 | Welcome to the real world! | 2")
-        (1, 'chapter 1', 'Welcome to the real world!', '2')
-        >>> f("Welcome to the real world!")
-        (0, '', 'Welcome to the real world!', '')
-        >>> f("** | Welcome to the real world! | 2")
-        (2, '', 'Welcome to the real world!', '2')
-        >>> f("|Preface | 1")
-        (0, '', 'Preface', '1')
-        >>> f("1.1 | Apple")
-        (0, '1.1', 'Apple', '')
+    >>> def f(text):
+    ...     d = parse_toc_row(text)
+    ...     return (d['level'], d['label'], d['title'], d['pagenum'])
+    ...
+    >>> f("* chapter 1 | Welcome to the real world! | 2")
+    (1, 'chapter 1', 'Welcome to the real world!', '2')
+    >>> f("Welcome to the real world!")
+    (0, '', 'Welcome to the real world!', '')
+    >>> f("** | Welcome to the real world! | 2")
+    (2, '', 'Welcome to the real world!', '2')
+    >>> f("|Preface | 1")
+    (0, '', 'Preface', '1')
+    >>> f("1.1 | Apple")
+    (0, '1.1', 'Apple', '')
     """
     RE_LEVEL = web.re_compile(r"(\**)(.*)")
     level, text = RE_LEVEL.match(line.strip()).groups()
@@ -545,7 +614,10 @@ def parse_toc_row(line):
         title = text
         label = page = ""
 
-    return web.storage(level=len(level), label=label.strip(), title=title.strip(), pagenum=page.strip())
+    return web.storage(
+        level=len(level), label=label.strip(), title=title.strip(), pagenum=page.strip()
+    )
+
 
 def parse_toc(text):
     """Parses each line of toc"""
@@ -553,15 +625,152 @@ def parse_toc(text):
         return []
     return [parse_toc_row(line) for line in text.splitlines() if line.strip(" |")]
 
-_languages = None
+
+def safeget(func):
+    """
+    TODO: DRY with solrbuilder copy
+    >>> safeget(lambda: {}['foo'])
+    >>> safeget(lambda: {}['foo']['bar'][0])
+    >>> safeget(lambda: {'foo': []}['foo'][0])
+    >>> safeget(lambda: {'foo': {'bar': [42]}}['foo']['bar'][0])
+    42
+    >>> safeget(lambda: {'foo': 'blah'}['foo']['bar'])
+    """
+    try:
+        return func()
+    except (KeyError, IndexError, TypeError):
+        return None
+
+
+def strip_accents(s: str) -> str:
+    # http://stackoverflow.com/questions/517923/what-is-the-best-way-to-remove-accents-in-a-python-unicode-string
+    try:
+        s.encode('ascii')
+        return s
+    except UnicodeEncodeError:
+        return ''.join(
+            c
+            for c in unicodedata.normalize('NFD', s)
+            if unicodedata.category(c) != 'Mn'
+        )
+
+
+@functools.cache
+def get_languages() -> dict:
+    keys = web.ctx.site.things({"type": "/type/language", "limit": 1000})
+    return {lang.key: lang for lang in web.ctx.site.get_many(keys)}
+
+
+def autocomplete_languages(prefix: str) -> Iterator[web.storage]:
+    """
+    Given, e.g., "English", this returns an iterator of:
+        <Storage {'key': '/languages/ang', 'code': 'ang', 'name': 'English, Old (ca. 450-1100)'}>
+        <Storage {'key': '/languages/eng', 'code': 'eng', 'name': 'English'}>
+        <Storage {'key': '/languages/enm', 'code': 'enm', 'name': 'English, Middle (1100-1500)'}>
+    """
+
+    def normalize(s: str) -> str:
+        return strip_accents(s).lower()
+
+    prefix = normalize(prefix)
+    user_lang = web.ctx.lang or 'en'
+    for lang in get_languages().values():
+        user_lang_name = safeget(lambda: lang['name_translated'][user_lang][0])
+        if user_lang_name and normalize(user_lang_name).startswith(prefix):
+            yield web.storage(
+                key=lang.key,
+                code=lang.code,
+                name=user_lang_name,
+            )
+            continue
+
+        lang_iso_code = safeget(lambda: lang['identifiers']['iso_639_1'][0])
+        native_lang_name = safeget(lambda: lang['name_translated'][lang_iso_code][0])
+        if native_lang_name and normalize(native_lang_name).startswith(prefix):
+            yield web.storage(
+                key=lang.key,
+                code=lang.code,
+                name=native_lang_name,
+            )
+            continue
+
+        if normalize(lang.name).startswith(prefix):
+            yield web.storage(
+                key=lang.key,
+                code=lang.code,
+                name=lang.name,
+            )
+            continue
+
+
+def get_abbrev_from_full_lang_name(input_lang_name: str, languages=None) -> str:
+    """
+    Take a language name, in English, such as 'English' or 'French' and return
+    'eng' or 'fre', respectively, if there is one match.
+
+    If there are zero matches, raise LanguageNoMatchError.
+    If there are multiple matches, raise a LanguageMultipleMatchError.
+    """
+    if languages is None:
+        languages = get_languages().values()
+    target_abbrev = ""
+
+    def normalize(s: str) -> str:
+        return strip_accents(s).lower()
+
+    for language in languages:
+        if normalize(language.name) == normalize(input_lang_name):
+            if target_abbrev:
+                raise LanguageMultipleMatchError(input_lang_name)
+
+            target_abbrev = language.code
+            continue
+
+        for key in language.name_translated:
+            if normalize(language.name_translated[key][0]) == normalize(
+                input_lang_name
+            ):
+                if target_abbrev:
+                    raise LanguageMultipleMatchError(input_lang_name)
+                target_abbrev = language.code
+                break
+
+    if not target_abbrev:
+        raise LanguageNoMatchError(input_lang_name)
+
+    return target_abbrev
+
+
+def get_language(lang_or_key: Thing | str) -> Thing | None:
+    if isinstance(lang_or_key, str):
+        return get_languages().get(lang_or_key)
+    else:
+        return lang_or_key
+
 
 @public
-def get_languages():
-    global _languages
-    if _languages is None:
-        keys = web.ctx.site.things({"type": "/type/language", "key~": "/languages/*", "limit": 1000})
-        _languages = sorted([web.storage(name=d.name, code=d.code, key=d.key) for d in web.ctx.site.get_many(keys)], key=lambda d: d.name.lower())
-    return _languages
+def get_language_name(lang_or_key: Thing | str):
+    if isinstance(lang_or_key, str):
+        lang = get_language(lang_or_key)
+        if not lang:
+            return lang_or_key
+    else:
+        lang = lang_or_key
+
+    user_lang = web.ctx.lang or 'en'
+    return safeget(lambda: lang['name_translated'][user_lang][0]) or lang.name
+
+
+@functools.cache
+def convert_iso_to_marc(iso_639_1: str) -> str | None:
+    """
+    e.g. 'en' -> 'eng'
+    """
+    for lang in get_languages().values():
+        code = safeget(lambda: lang['identifiers']['iso_639_1'][0])
+        if code == iso_639_1:
+            return lang.code
+    return None
 
 
 @public
@@ -584,9 +793,11 @@ def _get_author_config():
         identifiers = {}
     return web.storage(identifiers=identifiers)
 
+
 @public
 def get_edition_config():
     return _get_edition_config()
+
 
 @web.memoize
 def _get_edition_config():
@@ -597,12 +808,19 @@ def _get_edition_config():
     This is is cached because fetching and creating the Thing object was taking about 20ms of time for each book request.
     """
     thing = web.ctx.site.get('/config/edition')
-    classifications = [web.storage(t.dict()) for t in thing.classifications if 'name' in t]
+    classifications = [
+        web.storage(t.dict()) for t in thing.classifications if 'name' in t
+    ]
     identifiers = [web.storage(t.dict()) for t in thing.identifiers if 'name' in t]
     roles = thing.roles
-    return web.storage(classifications=classifications, identifiers=identifiers, roles=roles)
+    return web.storage(
+        classifications=classifications, identifiers=identifiers, roles=roles
+    )
+
 
 from openlibrary.core.olmarkdown import OLMarkdown
+
+
 def get_markdown(text, safe_mode=False):
     md = OLMarkdown(source=text, safe_mode=safe_mode)
     view._register_mdx_extensions(md)
@@ -610,14 +828,17 @@ def get_markdown(text, safe_mode=False):
     return md
 
 
-class HTML(six.text_type):
+class HTML(str):
     def __init__(self, html):
-        six.text_type.__init__(self, web.safeunicode(html))
+        str.__init__(self, web.safeunicode(html))
 
     def __repr__(self):
-        return "<html: %s>" % six.text_type.__repr__(self)
+        return "<html: %s>" % str.__repr__(self)
+
 
 _websafe = web.websafe
+
+
 def websafe(text):
     if isinstance(text, HTML):
         return text
@@ -632,17 +853,21 @@ from openlibrary.utils.olcompress import OLCompressor
 from openlibrary.utils import olmemcache
 import memcache
 
+
 class UpstreamMemcacheClient:
     """Wrapper to memcache Client to handle upstream specific conversion and OL specific compression.
     Compatible with memcache Client API.
     """
+
     def __init__(self, servers):
         self._client = memcache.Client(servers)
         compressor = OLCompressor()
         self.compress = compressor.compress
+
         def decompress(*args, **kw):
             d = json.loads(compressor.decompress(*args, **kw))
             return json.dumps(adapter.unconvert_dict(d))
+
         self.decompress = decompress
 
     def get(self, key):
@@ -662,20 +887,26 @@ class UpstreamMemcacheClient:
         keys = [web.safestr(k) for k in keys]
 
         d = self._client.get_multi(keys)
-        return dict((web.safeunicode(adapter.unconvert_key(k)), self.decompress(v)) for k, v in d.items())
+        return {
+            web.safeunicode(adapter.unconvert_key(k)): self.decompress(v)
+            for k, v in d.items()
+        }
+
 
 if config.get('upstream_memcache_servers'):
-    olmemcache.Client = UpstreamMemcacheClient
+    olmemcache.Client = UpstreamMemcacheClient  # type: ignore[assignment, misc]
     # set config.memcache_servers only after olmemcache.Client is updated
-    config.memcache_servers = config.upstream_memcache_servers
+    config.memcache_servers = config.upstream_memcache_servers  # type: ignore[attr-defined]
+
 
 def _get_recent_changes():
     site = web.ctx.get('site') or delegate.create_site()
     web.ctx.setdefault("ip", "127.0.0.1")
 
-    # The recentchanges can have multiple revisions for a document if it has been modified more than once.
-    # Take only the most recent revision in that case.
+    # The recentchanges can have multiple revisions for a document if it has been
+    # modified more than once.  Take only the most recent revision in that case.
     visited = set()
+
     def is_visited(key):
         if key in visited:
             return True
@@ -685,6 +916,7 @@ def _get_recent_changes():
 
     # ignore reverts
     re_revert = web.re_compile(r"reverted to revision \d+")
+
     def is_revert(r):
         return re_revert.match(r.comment or "")
 
@@ -707,6 +939,7 @@ def _get_recent_changes():
 
     return result
 
+
 def _get_recent_changes2():
     """New recent changes for around the library.
 
@@ -724,20 +957,28 @@ def _get_recent_changes2():
     def is_ignored(c):
         return (
             # c.kind=='update' allow us to ignore update recent changes on people
-            c.kind == 'update' or
+            c.kind == 'update'
+            or
             # ignore change if author has been deleted (e.g. spammer)
-            (c.author and c.author.type.key == '/type/delete'))
+            (c.author and c.author.type.key == '/type/delete')
+        )
 
     def render(c):
-        t = get_template("recentchanges/" + c.kind + "/message") or get_template("recentchanges/default/message")
+        t = get_template("recentchanges/" + c.kind + "/message") or get_template(
+            "recentchanges/default/message"
+        )
         return t(c)
 
     messages = [render(c) for c in changes if not is_ignored(c)]
     messages = [m for m in messages if str(m.get("ignore", "false")).lower() != "true"]
     return messages
 
-_get_recent_changes = web.memoize(_get_recent_changes, expires=5*60, background=True)
-_get_recent_changes2 = web.memoize(_get_recent_changes2, expires=5*60, background=True)
+
+_get_recent_changes = web.memoize(_get_recent_changes, expires=5 * 60, background=True)
+_get_recent_changes2 = web.memoize(
+    _get_recent_changes2, expires=5 * 60, background=True
+)
+
 
 @public
 def get_random_recent_changes(n):
@@ -748,9 +989,11 @@ def get_random_recent_changes(n):
 
     _changes = random.sample(changes, n) if len(changes) > n else changes
     for i, change in enumerate(_changes):
-        _changes[i]['__body__'] = _changes[i]['__body__'].replace('<script>', '')\
-                                                         .replace('</script>', '')
+        _changes[i]['__body__'] = (
+            _changes[i]['__body__'].replace('<script>', '').replace('</script>', '')
+        )
     return _changes
+
 
 def _get_blog_feeds():
     url = "https://blog.openlibrary.org/feed/"
@@ -759,21 +1002,28 @@ def _get_blog_feeds():
         tree = etree.fromstring(requests.get(url).text)
     except Exception:
         # Handle error gracefully.
-        logging.getLogger("openlibrary").error("Failed to fetch blog feeds", exc_info=True)
+        logging.getLogger("openlibrary").error(
+            "Failed to fetch blog feeds", exc_info=True
+        )
         return []
     finally:
         stats.end()
 
     def parse_item(item):
-        pubdate = datetime.datetime.strptime(item.find("pubDate").text, '%a, %d %b %Y %H:%M:%S +0000').isoformat()
+        pubdate = datetime.datetime.strptime(
+            item.find("pubDate").text, '%a, %d %b %Y %H:%M:%S +0000'
+        ).isoformat()
         return dict(
-            title=item.find("title").text,
-            link=item.find("link").text,
-            pubdate=pubdate
+            title=item.find("title").text, link=item.find("link").text, pubdate=pubdate
         )
+
     return [parse_item(item) for item in tree.findall(".//item")]
 
-_get_blog_feeds = cache.memcache_memoize(_get_blog_feeds, key_prefix="upstream.get_blog_feeds", timeout=5*60)
+
+_get_blog_feeds = cache.memcache_memoize(
+    _get_blog_feeds, key_prefix="upstream.get_blog_feeds", timeout=5 * 60
+)
+
 
 def get_donation_include(include):
     web_input = web.input()
@@ -789,13 +1039,18 @@ def get_donation_include(include):
     if 'ymd' in web_input:
         script_src += '?ymd=' + web_input.ymd
 
-    html = """
+    html = (
+        """
     <div id="donato"></div>
     <script src="%s" data-platform="ol"></script>
-    """ % script_src
+    """
+        % script_src
+    )
     return html
 
-#get_donation_include = cache.memcache_memoize(get_donation_include, key_prefix="upstream.get_donation_include", timeout=60)
+
+# get_donation_include = cache.memcache_memoize(get_donation_include, key_prefix="upstream.get_donation_include", timeout=60)
+
 
 @public
 def item_image(image_path, default=None):
@@ -805,18 +1060,22 @@ def item_image(image_path, default=None):
         return image_path
     return "https:" + image_path
 
+
 @public
 def get_blog_feeds():
     def process(post):
         post = web.storage(post)
         post.pubdate = parse_datetime(post.pubdate)
         return post
+
     return [process(post) for post in _get_blog_feeds()]
+
 
 class Request:
     path = property(lambda self: web.ctx.path)
     home = property(lambda self: web.ctx.home)
     domain = property(lambda self: web.ctx.host)
+    fullpath = property(lambda self: web.ctx.fullpath)
 
     @property
     def canonical_url(self):
@@ -828,15 +1087,16 @@ class Request:
         readable_path = web.ctx.get('readable_path', web.ctx.path) or ''
         query = web.ctx.query or ''
         host = web.ctx.host or ''
-        url = host + readable_path + query
-        if url:
+        if url := host + readable_path + query:
             url = "https://" + url
             parsed_url = urlparse(url)
 
             parsed_query = parse_qs(parsed_url.query)
             queries_to_exclude = ['sort', 'mode', 'v', 'type', 'debug']
 
-            canonical_query = {q: v for q, v in parsed_query.items() if q not in queries_to_exclude}
+            canonical_query = {
+                q: v for q, v in parsed_query.items() if q not in queries_to_exclude
+            }
             query = parse_urlencode(canonical_query, doseq=True)
             parsed_url = parsed_url._replace(query=query)
 
@@ -861,6 +1121,43 @@ def today():
     return datetime.datetime.today()
 
 
+@public
+def to_datetime(time: str):
+    return datetime.datetime.fromisoformat(time)
+
+
+class HTMLTagRemover(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.data = []
+
+    def handle_data(self, data):
+        self.data.append(data.strip())
+
+    def handle_endtag(self, tag):
+        self.data.append('\n' if tag in ('p', 'li') else ' ')
+
+
+@public
+def reformat_html(html_str: str, max_length: int | None = None) -> str:
+    """
+    Reformats an HTML string, removing all opening and closing tags.
+    Adds a line break element between each set of text content.
+    Optionally truncates contents that exceeds the given max length.
+
+    returns: A reformatted HTML string
+    """
+    parser = HTMLTagRemover()
+    # Must have a root node, otherwise the parser will fail
+    parser.feed(f'<div>{html_str}</div>')
+    content = [web.websafe(s) for s in parser.data if s]
+
+    if max_length:
+        return truncate(''.join(content), max_length).strip().replace('\n', '<br>')
+    else:
+        return ''.join(content).strip().replace('\n', '<br>')
+
+
 def setup():
     """Do required initialization"""
     # monkey-patch get_markdown to use OL Flavored Markdown
@@ -873,21 +1170,26 @@ def setup():
 
     web.commify = commify
 
-    web.template.Template.globals.update({
-        'HTML': HTML,
-        'request': Request(),
-        'logger': logging.getLogger("openlibrary.template"),
-        'sum': sum,
-        'get_donation_include': get_donation_include,
-        'websafe': web.websafe,
-    })
+    web.template.Template.globals.update(
+        {
+            'HTML': HTML,
+            'request': Request(),
+            'logger': logging.getLogger("openlibrary.template"),
+            'sum': sum,
+            'get_donation_include': get_donation_include,
+            'websafe': web.websafe,
+        }
+    )
 
     from openlibrary.core import helpers as h
+
     web.template.Template.globals.update(h.helpers)
 
-    if config.get('use_gzip') == True:
+    if config.get('use_gzip') is True:
         config.middleware.append(GZipMiddleware)
+
 
 if __name__ == '__main__':
     import doctest
+
     doctest.testmod()

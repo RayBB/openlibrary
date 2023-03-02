@@ -26,19 +26,19 @@
     },
     {
       "path": "static/build/add-book.*.js",
-      "maxSize": "1KB"
+      "maxSize": "4KB"
     },
     {
       "path": "static/build/readmore.*.js",
-      "maxSize": "1KB"
+      "maxSize": "2KB"
     },
     {
       "path": "static/build/modal-links.*.js",
-      "maxSize": "5.5KB"
+      "maxSize": "5.6KB"
     },
     {
       "path": "static/build/user-website.*.js",
-      "maxSize": "3KB"
+      "maxSize": "4KB"
     },
     {
       "path": "static/build/page-barcodescanner.*.js",
@@ -58,7 +58,7 @@
     },
     {
       "path": "static/build/admin.*.js",
-      "maxSize": "1KB"
+      "maxSize": "1.3KB"
     },
     {
       "path": "static/build/search.*.js",
@@ -69,16 +69,20 @@
       "maxSize": "5KB"
     },
     {
+      "path": "static/build/lists.*.js",
+      "maxSize": "5KB"
+    },
+    {
       "path": "static/build/all.js",
-      "maxSize": "115KB"
+      "maxSize": "122KB"
     },
     {
       "path": "static/build/page-admin.css",
-      "maxSize": "22KB"
+      "maxSize": "24KB"
     },
     {
       "path": "static/build/page-book.css",
-      "maxSize": "11KB"
+      "maxSize": "13KB"
     },
     {
       "path": "static/build/page-edit.css",
@@ -90,11 +94,11 @@
     },
     {
       "path": "static/build/page-home.css",
-      "maxSize": "7KB"
+      "maxSize": "8KB"
     },
     {
       "path": "static/build/page-plain.css",
-      "maxSize": "22KB"
+      "maxSize": "24KB"
     },
     {
       "path": "static/build/page-subject.css",
@@ -102,7 +106,7 @@
     },
     {
       "path": "static/build/page-user.css",
-      "maxSize": "22KB"
+      "maxSize": "25KB"
     }
   ]
 }
