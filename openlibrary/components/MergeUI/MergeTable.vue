@@ -220,42 +220,21 @@ export default {
                 record => record.type.key, 'desc');
             this.recordResponses = records;
         },
-        async getRatingsResponses(){
+        async getResponses(type, getter, defaultValue = {}){
             const promises = await Promise.all(
-                this.records.map(r => (r.type.key === '/type/work') ? get_ratings(r.key) : {})
+                this.records.map(r => (r.type.key === '/type/work') ? getter(r.key) : defaultValue)
             );
             const responses = promises.map(p => p.value || p);
-            this.ratingsResponses = responses;
-        },
-        async getEditionsResponses(){
-            const editionPromises = await Promise.all(
-                this.records.map(r => r.type.key.includes('work') ? get_editions(r.key) : {size: 0})
-            );
-            const editions = editionPromises.map(p => p.value || p);
-            this.editionsResponses = editions;
-        },
-        async getListsResponses(){
-            const promises = await Promise.all(
-                this.records.map(r => (r.type.key === '/type/work') ? get_lists(r.key, 0) : {})
-            );
-            const responses = promises.map(p => p.value || p);
-            this.listsResponses = responses;
-        },
-        async getBookshelvesResponses(){
-            const promises = await Promise.all(
-                this.records.map(r => (r.type.key === '/type/work') ? get_bookshelves(r.key) : {})
-            );
-            const responses = promises.map(p => p.value || p);
-            this.bookshelvesResponses = responses;
-        },
+            this[`${type}Responses`] = responses;
+        }
     },
     watch: {
         records(){
             // whenever we get records, we should fetch ratings, editions, lists, and bookshelves
-            this.getRatingsResponses()
-            this.getEditionsResponses()
-            this.getListsResponses()
-            this.getBookshelvesResponses()
+            this.getResponses('ratings', get_ratings)
+            this.getResponses('editions', get_editions, { size: 0 });
+            this.getResponses('lists', (key) => get_lists(key, 0));
+            this.getResponses('bookshelves', get_bookshelves);
         },
         recordResponses(){
             console.log('we got new record responses!')
