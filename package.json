@@ -50,6 +50,7 @@
     "@vue/cli-plugin-babel": "^5.0.8",
     "@vue/cli-plugin-eslint": "^5.0.8",
     "@vue/cli-service": "^5.0.8",
+    "@vue/runtime-dom": "^3.3.4",
     "babel-loader": "^8.3.0",
     "bundlesize": "0.18.1",
     "chart.js": "2.9.4",
