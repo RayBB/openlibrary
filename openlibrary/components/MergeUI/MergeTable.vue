@@ -8,7 +8,7 @@
     </thead>
     <tbody>
       <MergeRow
-        v-for="record in records"
+        v-for="record in recordResponses"
         :key="record.key"
         :record="record"
         :fields="fields"
@@ -75,10 +75,19 @@ export default {
     },
     data() {
         return {
-            master_key: null,
-            /** @type {{[key: string]: Boolean}} */
-            selected: []
+            // master_key: null,
+            // /** @type {{[key: string]: Boolean}} */
+            // selected: []
+            recordResponses: [],
+            ratingsResponses: [],
+            listsResponses: [],
+            bookshelvesResponses: [],
+            editionsResponses: [],
         };
+    },
+    created() {
+        console.log('starting setup!')
+        this.getRecordResponses();
     },
     props: {
         olids: Array,
@@ -86,113 +95,113 @@ export default {
         primary: String
     },
     asyncComputed: {
-        async records() {
-            const olids_sorted = _.sortBy(this.olids, olid =>
-                parseFloat(olid.match(/\d+/)[0])
-            );
-            // Ensure orphaned editions are at the bottom of the list
-            const records = _.orderBy(
-                await Promise.all(olids_sorted.map(fetchRecord)),
-                record => record.type.key, 'desc');
+        // async records() {
+        //     const olids_sorted = _.sortBy(this.olids, olid =>
+        //         parseFloat(olid.match(/\d+/)[0])
+        //     );
+        //     // Ensure orphaned editions are at the bottom of the list
+        //     const records = _.orderBy(
+        //         await Promise.all(olids_sorted.map(fetchRecord)),
+        //         record => record.type.key, 'desc');
 
-            let masterIndex = 0
-            if (this.primary) {
-                const primaryKey = `/works/${this.primary}`
-                masterIndex = records.findIndex(elem => elem.key === primaryKey)
-            }
+        //     let masterIndex = 0
+        //     if (this.primary) {
+        //         const primaryKey = `/works/${this.primary}`
+        //         masterIndex = records.findIndex(elem => elem.key === primaryKey)
+        //     }
 
-            this.master_key = records[masterIndex].key
-            this.selected = _.fromPairs(records.map(record => [record.key, record.type.key.includes('work')]));
+        //     this.master_key = records[masterIndex].key
+        //     this.selected = _.fromPairs(records.map(record => [record.key, record.type.key.includes('work')]));
 
-            return records;
-        },
+        //     return records;
+        // },
 
-        async editions() {
-            if (!this.records) return null;
+        // async editions() {
+        //     if (!this.records) return null;
 
-            const editionPromises = await Promise.all(
-                this.records.map(r => r.type.key.includes('work') ? get_editions(r.key) : {size: 0})
-            );
-            const editions = editionPromises.map(p => p.value || p);
-            const editionsMap = _.fromPairs(
-                this.records.map((work, i) => [work.key, editions[i]])
-            );
+        //     const editionPromises = await Promise.all(
+        //         this.records.map(r => r.type.key.includes('work') ? get_editions(r.key) : {size: 0})
+        //     );
+        //     const editions = editionPromises.map(p => p.value || p);
+        //     const editionsMap = _.fromPairs(
+        //         this.records.map((work, i) => [work.key, editions[i]])
+        //     );
 
-            // If any of the records are editions, insert the record as its own edition list
-            Object.keys(editionsMap).forEach((key, index) => {
-                if (key.includes('M')) editionsMap[key] = {size: 1, entries: [this.records[index]]};
-            });
+        //     // If any of the records are editions, insert the record as its own edition list
+        //     Object.keys(editionsMap).forEach((key, index) => {
+        //         if (key.includes('M')) editionsMap[key] = {size: 1, entries: [this.records[index]]};
+        //     });
 
-            return editionsMap;
-        },
+        //     return editionsMap;
+        // },
 
-        async lists() {
-            if (!this.records) return null;
+        // async lists() {
+        //     if (!this.records) return null;
 
-            // We only need the count, so set limit=0 (waaaay faster!)
-            const promises = await Promise.all(
-                this.records.map(r => (r.type.key === '/type/work') ? get_lists(r.key, 0) : {})
-            );
-            const responses = promises.map(p => p.value || p);
-            return _.fromPairs(
-                this.records.map((work, i) => [work.key, responses[i]])
-            );
-        },
-        async bookshelves() {
-            if (!this.records) return null;
+        //     // We only need the count, so set limit=0 (waaaay faster!)
+        //     const promises = await Promise.all(
+        //         this.records.map(r => (r.type.key === '/type/work') ? get_lists(r.key, 0) : {})
+        //     );
+        //     const responses = promises.map(p => p.value || p);
+        //     return _.fromPairs(
+        //         this.records.map((work, i) => [work.key, responses[i]])
+        //     );
+        // },
+        // async bookshelves() {
+        //     if (!this.records) return null;
 
-            const promises = await Promise.all(
-                this.records.map(r => (r.type.key === '/type/work') ? get_bookshelves(r.key) : {})
-            );
-            const responses = promises.map(p => p.value || p);
-            return _.fromPairs(
-                this.records.map((work, i) => [work.key, responses[i]])
-            );
-        },
+        //     const promises = await Promise.all(
+        //         this.records.map(r => (r.type.key === '/type/work') ? get_bookshelves(r.key) : {})
+        //     );
+        //     const responses = promises.map(p => p.value || p);
+        //     return _.fromPairs(
+        //         this.records.map((work, i) => [work.key, responses[i]])
+        //     );
+        // },
 
-        async ratings() {
-            if (!this.records) return null;
+        // async ratings() {
+        //     if (!this.records) return null;
 
-            const promises = await Promise.all(
-                this.records.map(r => (r.type.key === '/type/work') ? get_ratings(r.key) : {})
-            );
-            const responses = promises.map(p => p.value || p);
-            return _.fromPairs(
-                this.records.map((work, i) => [work.key, responses[i]])
-            );
-        },
+        //     const promises = await Promise.all(
+        //         this.records.map(r => (r.type.key === '/type/work') ? get_ratings(r.key) : {})
+        //     );
+        //     const responses = promises.map(p => p.value || p);
+        //     return _.fromPairs(
+        //         this.records.map((work, i) => [work.key, responses[i]])
+        //     );
+        // },
 
-        async merge() {
-            if (!this.master_key || !this.records || !this.editions)
-                return undefined;
+        // async merge() {
+        //     if (!this.master_key || !this.records || !this.editions)
+        //         return undefined;
 
-            const master = this.records.find(r => r.key === this.master_key);
-            const all_dupes = this.records
-                .filter(r => this.selected[r.key])
-                .filter(r => r.key !== this.master_key);
-            const dupes = all_dupes.filter(r => r.type.key === '/type/work');
-            const records = [master, ...all_dupes];
-            const editions_to_move = _.flatMap(
-                all_dupes,
-                work => this.editions[work.key].entries
-            );
+        //     const master = this.records.find(r => r.key === this.master_key);
+        //     const all_dupes = this.records
+        //         .filter(r => this.selected[r.key])
+        //         .filter(r => r.key !== this.master_key);
+        //     const dupes = all_dupes.filter(r => r.type.key === '/type/work');
+        //     const records = [master, ...all_dupes];
+        //     const editions_to_move = _.flatMap(
+        //         all_dupes,
+        //         work => this.editions[work.key].entries
+        //     );
 
-            const [record, sources] = merge(master, dupes);
+        //     const [record, sources] = merge(master, dupes);
 
-            const extras = {
-                edition_count: _.sum(records.map(r => this.editions[r.key].size)),
-                list_count: (this.lists) ? _.sum(records.map(r => this.lists[r.key].size)) : null
-            };
+        //     const extras = {
+        //         edition_count: _.sum(records.map(r => this.editions[r.key].size)),
+        //         list_count: (this.lists) ? _.sum(records.map(r => this.lists[r.key].size)) : null
+        //     };
 
-            const unmergeable_works = this.records
-                .filter(work => work.type.key === '/type/work' &&
-                this.selected[work.key] &&
-                work.key !== this.master_key &&
-                this.editions[work.key].entries.length < this.editions[work.key].size)
-                .map(r => r.key);
+        //     const unmergeable_works = this.records
+        //         .filter(work => work.type.key === '/type/work' &&
+        //         this.selected[work.key] &&
+        //         work.key !== this.master_key &&
+        //         this.editions[work.key].entries.length < this.editions[work.key].size)
+        //         .map(r => r.key);
 
-            return { record, sources, ...extras, dupes, editions_to_move, unmergeable_works };
-        }
+        //     return { record, sources, ...extras, dupes, editions_to_move, unmergeable_works };
+        // }
     },
     methods: {
         isCellUsed(record, field) {
@@ -200,6 +209,56 @@ export default {
             return field in this.merge.sources
                 ? this.merge.sources[field].includes(record.key)
                 : record.key === this.master_key;
+        },
+        async getRecordResponses(){
+            const olids_sorted = _.sortBy(this.olids, olid =>
+                parseFloat(olid.match(/\d+/)[0])
+            );
+            // Ensure orphaned editions are at the bottom of the list
+            const records = _.orderBy(
+                await Promise.all(olids_sorted.map(fetchRecord)),
+                record => record.type.key, 'desc');
+            this.recordResponses = records;
+        },
+        async getRatingsResponses(){
+            const promises = await Promise.all(
+                this.records.map(r => (r.type.key === '/type/work') ? get_ratings(r.key) : {})
+            );
+            const responses = promises.map(p => p.value || p);
+            this.ratingsResponses = responses;
+        },
+        async getEditionsResponses(){
+            const editionPromises = await Promise.all(
+                this.records.map(r => r.type.key.includes('work') ? get_editions(r.key) : {size: 0})
+            );
+            const editions = editionPromises.map(p => p.value || p);
+            this.editionsResponses = editions;
+        },
+        async getListsResponses(){
+            const promises = await Promise.all(
+                this.records.map(r => (r.type.key === '/type/work') ? get_lists(r.key, 0) : {})
+            );
+            const responses = promises.map(p => p.value || p);
+            this.listsResponses = responses;
+        },
+        async getBookshelvesResponses(){
+            const promises = await Promise.all(
+                this.records.map(r => (r.type.key === '/type/work') ? get_bookshelves(r.key) : {})
+            );
+            const responses = promises.map(p => p.value || p);
+            this.bookshelvesResponses = responses;
+        },
+    },
+    watch: {
+        records(){
+            // whenever we get records, we should fetch ratings, editions, lists, and bookshelves
+            this.getRatingsResponses()
+            this.getEditionsResponses()
+            this.getListsResponses()
+            this.getBookshelvesResponses()
+        },
+        recordResponses(){
+            console.log('we got new record responses!')
         }
     },
     computed: {
@@ -257,6 +316,91 @@ export default {
                 ...usedTextData,
                 ...otherFields
             ];
+        },
+        bookshelves(){
+            if (!this.bookshelvesResponses) return null
+            return _.fromPairs(
+                this.records.map((work, i) => [work.key, this.bookshelvesResponses[i]])
+            );
+        },
+        records(){
+            console.log('computing records', this.recordResponses.length)
+            return this.recordResponses;
+        },
+        lists(){
+            if (!this.listsResponses) return null
+            return _.fromPairs(
+                this.records.map((work, i) => [work.key, this.listsResponses[i]])
+            );
+        },
+        editions(){
+            if (!this.editionsResponses) {
+                console.log('we don\'t have edition responses')
+                return null
+            }
+            console.log('we do have edition responses...')
+            const editionsMap = _.fromPairs(
+                this.records.map((work, i) => [work.key, this.editionsResponses[i]])
+            );
+
+            // If any of the records are editions, insert the record as its own edition list
+            Object.keys(editionsMap).forEach((key, index) => {
+                if (key.includes('M')) editionsMap[key] = {size: 1, entries: [this.records[index]]};
+            });
+
+            return editionsMap;
+        },
+        selected(){
+            /** @type {{[key: string]: Boolean}} */
+            if (!this.recordResponses) return [];
+            return _.fromPairs(this.recordResponses.map(record => [record.key, record.type.key.includes('work')]));
+        },
+        master_key(){
+            if (!this.recordResponses) return null;
+            let masterIndex = 0
+            if (this.primary) {
+                const primaryKey = `/works/${this.primary}`
+                masterIndex = this.recordResponses.findIndex(elem => elem.key === primaryKey)
+            }
+
+            return this.recordResponses[masterIndex].key
+        },
+        ratings(){
+            if (!this.records || !this.ratingsResponses) return null
+            return _.fromPairs(
+                this.records.map((work, i) => [work.key, this.ratingsResponses[i]])
+            );
+        },
+        merge() {
+            if (!this.master_key || !this.records || !this.editions || !this.lists)
+                return undefined;
+
+            const master = this.records.find(r => r.key === this.master_key);
+            const all_dupes = this.records
+                .filter(r => this.selected[r.key])
+                .filter(r => r.key !== this.master_key);
+            const dupes = all_dupes.filter(r => r.type.key === '/type/work');
+            const records = [master, ...all_dupes];
+            const editions_to_move = _.flatMap(
+                all_dupes,
+                work => this.editions[work.key].entries
+            );
+
+            const [record, sources] = merge(master, dupes);
+
+            const extras = {
+                edition_count: _.sum(records.map(r => this.editions[r.key].size)),
+                list_count: (this.lists) ? _.sum(records.map(r => this.lists[r.key].size)) : null
+            };
+
+            const unmergeable_works = this.records
+                .filter(work => work.type.key === '/type/work' &&
+                this.selected[work.key] &&
+                work.key !== this.master_key &&
+                this.editions[work.key].entries.length < this.editions[work.key].size)
+                .map(r => r.key);
+
+            return { record, sources, ...extras, dupes, editions_to_move, unmergeable_works };
         }
     }
 };
