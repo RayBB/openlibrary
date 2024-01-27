@@ -17,7 +17,7 @@ start affiliate-server using gunicorn webserver:
 
 
 Testing Amazon API:
-  ol-home0% `docker exec -it openlibrary_affiliate-server_1 bash`
+  ol-home0% `docker exec -it openlibrary-affiliate-server-1 bash`
   openlibrary@ol-home0:/openlibrary$ `python`
 
 ```
@@ -86,6 +86,7 @@ batch_name = ""
 batch: Batch | None = None
 
 web.amazon_queue = queue.Queue()  # a thread-safe multi-producer, multi-consumer queue
+web.amazon_lookup_thread = None
 
 
 def get_current_amazon_batch() -> Batch:
@@ -120,7 +121,7 @@ def is_book_needed(book: dict, edition: dict) -> list[str]:
         if field_value := book.get(book_field) and not edition.get(edition_field):
             needed_book_fields.append(book_field)
 
-    if needed_book_fields == ["authors"]:  # If the only field needed is authors
+    if needed_book_fields == ["authors"]:  # noqa: SIM102
         if work_key := edition.get("works") and edition["work"][0].get("key"):
             work = web.ctx.site.get(work_key)
             if work.get("authors"):
@@ -199,22 +200,22 @@ def process_amazon_batch(isbn_10s: list[str]) -> None:
         logger.debug("DB parameters missing from affiliate-server infobase")
         return
 
-    if books := [clean_amazon_metadata_for_load(product) for product in products]:
-        if pending_books := get_pending_books(books):
-            stats.increment(
-                "ol.affiliate.amazon.total_items_batched_for_import",
-                n=len(pending_books),
-            )
-            get_current_amazon_batch().add_items(
-                [{'ia_id': b['source_records'][0], 'data': b} for b in pending_books]
-            )
+    books = [clean_amazon_metadata_for_load(product) for product in products]
+    if books and (pending_books := get_pending_books(books)):
+        stats.increment(
+            "ol.affiliate.amazon.total_items_batched_for_import",
+            n=len(pending_books),
+        )
+        get_current_amazon_batch().add_items(
+            [{'ia_id': b['source_records'][0], 'data': b} for b in pending_books]
+        )
 
 
 def seconds_remaining(start_time: float) -> float:
     return max(API_MAX_WAIT_SECONDS - (time.time() - start_time), 0)
 
 
-def amazon_lookup(site, stats_client) -> None:
+def amazon_lookup(site, stats_client, logger) -> None:
     """
     A separate thread of execution that uses the time up to API_MAX_WAIT_SECONDS to
     create a list of isbn_10s that is not larger than API_MAX_ITEMS_PER_CALL and then
@@ -233,15 +234,35 @@ def amazon_lookup(site, stats_client) -> None:
                 )
             except queue.Empty:
                 pass
+        logger.info(f"Before amazon_lookup(): {len(isbn_10s)} items")
         if isbn_10s:
             time.sleep(seconds_remaining(start_time))
-            process_amazon_batch(list(isbn_10s))
+            try:
+                process_amazon_batch(list(isbn_10s))
+                logger.info(f"After amazon_lookup(): {len(isbn_10s)} items")
+            except Exception:
+                logger.exception("Amazon Lookup Thread died")
+                stats_client.incr("ol.affiliate.amazon.lookup_thread_died")
+
+
+def make_amazon_lookup_thread() -> threading.Thread:
+    """Called from start_server() and assigned to web.amazon_lookup_thread."""
+    thread = threading.Thread(
+        target=amazon_lookup,
+        args=(web.ctx.site, stats.client, logger),
+        daemon=True,
+    )
+    thread.start()
+    return thread
 
 
 class Status:
     def GET(self) -> str:
         return json.dumps(
             {
+                "thread_is_alive": bool(
+                    web.amazon_lookup_thread and web.amazon_lookup_thread.is_alive()
+                ),
                 "queue_size": web.amazon_queue.qsize(),
                 "queue": list(web.amazon_queue.queue),
             }
@@ -345,9 +366,13 @@ def start_server():
     infogami._setup()
 
     if "pytest" not in sys.modules:
-        threading.Thread(
-            target=amazon_lookup, args=(web.ctx.site, stats.client)
-        ).start()
+        web.amazon_lookup_thread = make_amazon_lookup_thread()
+        thread_is_alive = bool(
+            web.amazon_lookup_thread and web.amazon_lookup_thread.is_alive()
+        )
+        logger.critical(f"web.amazon_lookup_thread.is_alive() is {thread_is_alive}")
+    else:
+        logger.critical("Not starting amazon_lookup_thread in pytest")
 
     sys.argv = [sys.argv[0]] + list(args)
     app.run()

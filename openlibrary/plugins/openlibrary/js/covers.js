@@ -2,6 +2,9 @@
  * Functionality for templates/covers
  */
 import 'jquery-ui/ui/widgets/sortable';
+import 'jquery-ui-touch-punch'; // this makes drag-to-reorder work on touch devices
+
+import { closePopup } from './utils';
 
 //cover/change.html
 export function initCoversChange() {
@@ -57,19 +60,8 @@ export function initCoversAddManage() {
         var url = val('#imageUrl');
         var coverid = val('#coverid');
 
-        if (file === '' && (url === '' || url === 'http://') && coverid === '') {
+        if (file === '' && url === '' && coverid === '') {
             return error('Please choose an image or provide a URL.', event);
-        }
-
-        function test_url(url) {
-            var obj = {
-                optional: function () { return false; }
-            }
-            return window.$.validator.url.apply(obj, [url, null]);
-        }
-
-        if (url !== '' && url !== 'http://' && !test_url(url)) {
-            return error('Please provide a valid URL.');
         }
     });
 
@@ -106,7 +98,7 @@ export function initCoversSaved() {
     const image = $('.imageSaved').data('imageId');
     var cover_url;
 
-    $('.formButtons button').on('click', parent.closePopup);
+    $('.formButtons button').on('click', closePopup);
 
     // Update the image for the cover
     if (['/type/edition', '/type/work', '/edit'].includes(doc_type_key)) {

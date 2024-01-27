@@ -36,6 +36,10 @@ class add_cover(delegate.page):
         if not book:
             raise web.notfound("")
 
+        user = accounts.get_current_user()
+        if user and user.is_read_only():
+            raise web.forbidden(message="Patron not permitted to upload images")
+
         i = web.input(file={}, url="")
 
         # remove references to field storage objects
@@ -56,8 +60,8 @@ class add_cover(delegate.page):
         """Uploads a cover to coverstore and returns the response."""
         olid = key.split("/")[-1]
 
-        if i.file is not None and hasattr(i.file, 'value'):
-            data = i.file.value
+        if i.file is not None and hasattr(i.file, 'file'):
+            data = i.file.file
         else:
             data = None
 
@@ -78,7 +82,7 @@ class add_cover(delegate.page):
             upload_url = "http:" + upload_url
 
         try:
-            files = {'data': BytesIO(data)}
+            files = {'data': data}
             response = requests.post(upload_url, data=params, files=files)
             return web.storage(response.json())
         except requests.HTTPError as e:

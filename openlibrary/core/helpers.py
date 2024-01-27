@@ -2,7 +2,7 @@
 """
 import json
 import re
-from datetime import datetime
+from datetime import datetime, date
 from urllib.parse import urlsplit
 
 import web
@@ -112,6 +112,8 @@ class NothingEncoder(json.JSONEncoder):
         """
         if isinstance(obj, Nothing):
             return None
+        if isinstance(obj, date):
+            return obj.isoformat()
         return super().default(obj)
 
 
@@ -195,18 +197,15 @@ def cond(pred, true_value, false_value=""):
 
     Hanly to use instead of if-else expression.
     """
-    if pred:
-        return true_value
-    else:
-        return false_value
+    return true_value if pred else false_value
 
 
 def commify(number, lang=None):
     """localized version of web.commify"""
     try:
         lang = lang or web.ctx.get("lang") or "en"
-        return babel.numbers.format_number(int(number), lang)
-    except:
+        return babel.numbers.format_decimal(int(number), locale=lang)
+    except Exception:
         return str(number)
 
 
@@ -219,7 +218,7 @@ def truncate(text, limit):
     return text[:limit] + "..."
 
 
-def urlsafe(path):
+def urlsafe(path: str) -> str:
     """Replaces the unsafe chars from path with underscores."""
     return _get_safepath_re().sub('_', path).strip('_')[:100]
 

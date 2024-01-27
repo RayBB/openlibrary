@@ -9,7 +9,7 @@ $ is_privileged_user = ctx.user and (ctx.user.is_admin() or ctx.user.is_usergrou
     $     { "href": "/account/books", "text": _("My Books"), "track": "MyBooks", "subheading": _("Loans, Reading Log, Lists, Stats") },
     $     { "href": ctx.user.key, "text": _("My Profile"), "track": "MyProfile" },
     $     { "href": homepath() + "/account", "text": _("Settings"), "track": "MySettings" },
-    $     { "post": "/account/logout", "text": _("Log out"), "track": "Logout" },
+    $     { "post": "/account/logout", "text": _("Log out"), "track": "Logout", "name":"hamburger-logout" },
     $ ]
       $if is_privileged_user:
         $ loginLinks.insert(2, { "href": homepath() + "/merges", "text": _("Pending Merge Requests"),"track": "MyRequests", "badge": True })
@@ -27,6 +27,7 @@ $ is_privileged_user = ctx.user and (ctx.user.is_admin() or ctx.user.is_usergrou
   $     { "href": "/lists", "text": _("Lists"), "track": "Lists" },
   $     { "href": "/collections", "text": _("Collections"), "track": "Collections" },
   $     { "href": "/k-12", "text": _("K-12 Student Library"), "track": "K12Library" },
+  $     { "href": "/booktalks", "text": _("Book Talks"), "track": "BookTalks" },
   $     { "href": "/random", "text": _("Random Book"), "track": "RandomBook" },
   $     { "href": "/advancedsearch", "text": _("Advanced Search"), "track": "AdvancedSearch" }
   $ ]

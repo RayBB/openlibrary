@@ -2,7 +2,8 @@ from datetime import datetime
 import logging
 import re
 import sys
-from typing import Any, Callable, Optional
+from typing import Any, cast
+from collections.abc import Callable
 
 import luqum.tree
 import web
@@ -45,6 +46,7 @@ class WorkSearchScheme(SearchScheme):
         "ebook_access",
         "edition_count",
         "edition_key",
+        "format",
         "by_statement",
         "publish_date",
         "lccn",
@@ -64,7 +66,6 @@ class WorkSearchScheme(SearchScheme):
         "time",
         "has_fulltext",
         "title_suggest",
-        "edition_count",
         "publish_year",
         "language",
         "number_of_pages_median",
@@ -72,6 +73,11 @@ class WorkSearchScheme(SearchScheme):
         "publisher_facet",
         "author_facet",
         "first_publish_year",
+        "ratings_count",
+        "readinglog_count",
+        "want_to_read_count",
+        "currently_reading_count",
+        "already_read_count",
         # Subjects
         "subject_key",
         "person_key",
@@ -114,6 +120,13 @@ class WorkSearchScheme(SearchScheme):
         'editions': 'edition_count desc',
         'old': 'def(first_publish_year, 9999) asc',
         'new': 'first_publish_year desc',
+        'rating': 'ratings_sortable desc',
+        'rating asc': 'ratings_sortable asc',
+        'rating desc': 'ratings_sortable desc',
+        'readinglog': 'readinglog_count desc',
+        'want_to_read': 'want_to_read_count desc',
+        'currently_reading': 'currently_reading_count desc',
+        'already_read': 'already_read_count desc',
         'title': 'title_sort asc',
         'scans': 'ia_count desc',
         # Classifications
@@ -123,6 +136,10 @@ class WorkSearchScheme(SearchScheme):
         'ddc_sort': 'ddc_sort asc',
         'ddc_sort asc': 'ddc_sort asc',
         'ddc_sort desc': 'ddc_sort desc',
+        # Ebook access
+        'ebook_access': 'ebook_access desc',
+        'ebook_access asc': 'ebook_access asc',
+        'ebook_access desc': 'ebook_access desc',
         # Key
         'key': 'key asc',
         'key asc': 'key asc',
@@ -261,16 +278,19 @@ class WorkSearchScheme(SearchScheme):
         # query, but much more flexible. We wouldn't be able to do our
         # complicated parent/child queries with defType!
 
-        full_work_query = '({{!edismax q.op="AND" qf="{qf}" bf="{bf}" v={v}}})'.format(
+        full_work_query = '({{!edismax q.op="AND" qf="{qf}" pf="{pf}" bf="{bf}" v={v}}})'.format(
             # qf: the fields to query un-prefixed parts of the query.
             # e.g. 'harry potter' becomes
             # 'text:(harry potter) OR alternative_title:(harry potter)^20 OR ...'
-            qf='text alternative_title^20 author_name^20',
+            qf='text alternative_title^10 author_name^10',
+            # pf: phrase fields. This increases the score of documents that
+            # match the query terms in close proximity to each other.
+            pf='alternative_title^10 author_name^10',
             # bf (boost factor): boost results based on the value of this
             # field. I.e. results with more editions get boosted, upto a
             # max of 100, after which we don't see it as good signal of
             # quality.
-            bf='min(100,edition_count)',
+            bf='min(100,edition_count) min(100,def(readinglog_count,0))',
             # v: the query to process with the edismax query parser. Note
             # we are using a solr variable here; this reads the url parameter
             # arbitrarily called workQuery.
@@ -278,6 +298,7 @@ class WorkSearchScheme(SearchScheme):
         )
 
         ed_q = None
+        full_ed_query = None
         editions_fq = []
         if has_solr_editions_enabled() and 'editions:[subquery]' in solr_fields:
             WORK_FIELD_TO_ED_FIELD: dict[str, str | Callable[[str], str]] = {
@@ -288,13 +309,11 @@ class WorkSearchScheme(SearchScheme):
                 'title': 'title',
                 'title_suggest': 'title_suggest',
                 'subtitle': 'subtitle',
-                # TODO: Change to alternative_title after full reindex
-                # Use an OR until that happens, but this will still miss the
-                # "other_titles" field
-                'alternative_title': lambda expr: f'title:({expr}) OR subtitle:({expr})',
+                'alternative_title': 'alternative_title',
                 'alternative_subtitle': 'subtitle',
                 'cover_i': 'cover_i',
                 # Misc useful data
+                'format': 'format',
                 'language': 'language',
                 'publisher': 'publisher',
                 'publisher_facet': 'publisher_facet',
@@ -314,7 +333,7 @@ class WorkSearchScheme(SearchScheme):
 
             def convert_work_field_to_edition_field(
                 field: str,
-            ) -> Optional[str | Callable[[str], str]]:
+            ) -> str | Callable[[str], str] | None:
                 """
                 Convert a SearchField name (eg 'title') to the correct fieldname
                 for use in an edition query.
@@ -360,6 +379,22 @@ class WorkSearchScheme(SearchScheme):
                                 node.name = new_name
                             else:
                                 node.name = f'+{new_name}'
+                            if new_name == 'key':
+                                # need to convert eg 'edition_key:OL123M' to
+                                # 'key:(/books/OL123M)'. Or
+                                # key:(/books/OL123M OR /books/OL456M)
+                                for n, n_parents in luqum_traverse(node.expr):
+                                    if isinstance(
+                                        n, (luqum.tree.Word, luqum.tree.Phrase)
+                                    ):
+                                        val = (
+                                            n.value
+                                            if isinstance(n, luqum.tree.Word)
+                                            else n.value[1:-1]
+                                        )
+                                        if val.startswith('/books/'):
+                                            val = val[7:]
+                                        n.value = f'"/books/{val}"'
                         elif callable(new_name):
                             # Replace this node with a new one
                             # First process the expr
@@ -388,8 +423,7 @@ class WorkSearchScheme(SearchScheme):
                 if param_name != 'fq' or param_value.startswith('type:'):
                     continue
                 field_name, field_val = param_value.split(':', 1)
-                ed_field = convert_work_field_to_edition_field(field_name)
-                if ed_field:
+                if ed_field := convert_work_field_to_edition_field(field_name):
                     editions_fq.append(f'{ed_field}:{field_val}')
             for fq in editions_fq:
                 new_params.append(('editions.fq', fq))
@@ -421,10 +455,7 @@ class WorkSearchScheme(SearchScheme):
         if ed_q or len(editions_fq) > 1:
             # The elements in _this_ edition query should cause works not to
             # match _at all_ if matching editions are not found
-            if ed_q:
-                new_params.append(('edQuery', full_ed_query))
-            else:
-                new_params.append(('edQuery', '*:*'))
+            new_params.append(('edQuery', cast(str, full_ed_query) if ed_q else '*:*'))
             q = (
                 f'+{full_work_query} '
                 # This is using the special parent query syntax to, on top of
@@ -437,6 +468,10 @@ class WorkSearchScheme(SearchScheme):
                 ')'
             )
             new_params.append(('q', q))
+        else:
+            new_params.append(('q', full_work_query))
+
+        if full_ed_query:
             edition_fields = {
                 f.split('.', 1)[1] for f in solr_fields if f.startswith('editions.')
             }
@@ -454,8 +489,6 @@ class WorkSearchScheme(SearchScheme):
             )
             new_params.append(('editions.rows', '1'))
             new_params.append(('editions.fl', ','.join(edition_fields)))
-        else:
-            new_params.append(('q', full_work_query))
 
         return new_params
 

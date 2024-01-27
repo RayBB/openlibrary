@@ -9,7 +9,7 @@ import asyncio
 import itertools
 import logging
 import re
-from typing import List, Optional, TypedDict, cast
+from typing import Optional, TypedDict, cast
 from collections.abc import Iterable, Sized
 
 import httpx
@@ -36,6 +36,8 @@ def get_data_provider(type="default"):
         return BetterDataProvider()
     elif type == "legacy":
         return LegacyDataProvider()
+    else:
+        raise ValueError("unknown data provider type: %s" % type)
 
 
 def is_valid_ocaid(ocaid: str):
@@ -106,7 +108,7 @@ def partition(lst: list, parts: int):
     parts = min(total_len, parts)
     size = total_len // parts
 
-    for i in range(0, parts):
+    for i in range(parts):
         start = i * size
         end = total_len if (i == parts - 1) else ((i + 1) * size)
         yield lst[start:end]
@@ -129,7 +131,7 @@ class DataProvider:
     """
 
     def __init__(self) -> None:
-        self.ia_cache: dict[str, Optional[dict]] = dict()
+        self.ia_cache: dict[str, dict | None] = {}
 
     @staticmethod
     async def _get_lite_metadata(ocaids: list[str], _recur_depth=0, _max_recur_depth=3):
@@ -285,7 +287,7 @@ class DataProvider:
         """
         raise NotImplementedError()
 
-    def get_work_ratings(self, work_key: str) -> Optional[WorkRatingsSummary]:
+    def get_work_ratings(self, work_key: str) -> WorkRatingsSummary | None:
         raise NotImplementedError()
 
     def get_work_reading_log(self, work_key: str) -> WorkReadingLogSolrSummary | None:
@@ -318,7 +320,7 @@ class LegacyDataProvider(DataProvider):
         logger.info("get_document %s", key)
         return self._withKey(key)
 
-    def get_work_ratings(self, work_key: str) -> Optional[WorkRatingsSummary]:
+    def get_work_ratings(self, work_key: str) -> WorkRatingsSummary | None:
         work_id = int(work_key[len('/works/OL') : -len('W')])
         return Ratings.get_work_ratings_summary(work_id)
 
@@ -360,7 +362,9 @@ class ExternalDataProvider(DataProvider):
         return resp['entries']
 
     async def get_document(self, key: str):
-        return requests.get(f"http://{self.ol_host}{key}.json").json()
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"http://{self.ol_host}{key}.json")
+            return response.json()
 
 
 class BetterDataProvider(LegacyDataProvider):
@@ -396,7 +400,7 @@ class BetterDataProvider(LegacyDataProvider):
             infogami._setup()
             delegate.fakeload()
 
-            from openlibrary.solr.process_stats import get_db
+            from openlibrary.core.db import get_db
 
             self.db: DB = get_db()
         else:
@@ -411,13 +415,7 @@ class BetterDataProvider(LegacyDataProvider):
         return self.cache.get(key) or {"key": key, "type": {"key": "/type/delete"}}
 
     async def preload_documents(self, keys: Iterable[str]):
-        identifiers = [
-            k.replace("/books/ia:", "") for k in keys if k.startswith("/books/ia:")
-        ]
-        # self.preload_ia_items(identifiers)
-        re_key = web.re_compile(r"/(books|works|authors)/OL\d+[MWA]")
-
-        keys2 = {k for k in keys if re_key.match(k)}
+        keys2 = set(keys)
         # keys2.update(k for k in self.ia_redirect_cache.values() if k is not None)
         self.preload_documents0(keys2)
         self._preload_works()
@@ -458,9 +456,8 @@ class BetterDataProvider(LegacyDataProvider):
     async def _preload_metadata_of_editions(self):
         identifiers = []
         for doc in self.cache.values():
-            if doc and doc['type']['key'] == '/type/edition':
-                if doc.get('ocaid'):
-                    identifiers.append(doc['ocaid'])
+            if doc and doc['type']['key'] == '/type/edition' and doc.get('ocaid'):
+                identifiers.append(doc['ocaid'])
                 # source_records = doc.get("source_records", [])
                 # identifiers.extend(r[len("ia:"):] for r in source_records if r.startswith("ia:"))
         await self.preload_metadata(identifiers)
@@ -521,18 +518,18 @@ class BetterDataProvider(LegacyDataProvider):
         # time consuming.
         key_query = (
             "select id from property where name='works'"
-            + " and type=(select id from thing where key='/type/edition')"
+            " and type=(select id from thing where key='/type/edition')"
         )
 
         q = (
             "SELECT edition.key as edition_key, work.key as work_key"
-            + " FROM thing as edition, thing as work, edition_ref"
-            + " WHERE edition_ref.thing_id=edition.id"
-            + "   AND edition_ref.value=work.id"
-            + f"   AND edition_ref.key_id=({key_query})"
-            + "   AND work.key in $keys"
+            " FROM thing as edition, thing as work, edition_ref"
+            " WHERE edition_ref.thing_id=edition.id"
+            "   AND edition_ref.value=work.id"
+            f"   AND edition_ref.key_id=({key_query})"
+            "   AND work.key in $keys"
         )
-        result = self.db.query(q, vars=dict(keys=work_keys))
+        result = self.db.query(q, vars={"keys": work_keys})
         for row in result:
             self.edition_keys_of_works_cache.setdefault(row.work_key, []).append(
                 row.edition_key

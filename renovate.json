@@ -15,11 +15,11 @@
       "automerge": true
     },
     {
-      "matchPackageNames": ["jest", "bundlesize", "sinon", "stylelint", "stylelint-declaration-use-variable"],
+      "matchPackageNames": ["jest", "bundlesize", "sinon", "stylelint", "stylelint-declaration-strict-value"],
       "automerge": true
     },
     {
-      "matchPackageNames": ["flake8", "mypy", "pytest", "pytest-asyncio", "safety"],
+      "matchPackageNames": ["mypy", "pytest", "pytest-asyncio", "ruff", "safety"],
       "automerge": true
     },
     {

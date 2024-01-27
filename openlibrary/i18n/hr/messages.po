@@ -3,14 +3,14 @@
 # This file is distributed under the same license as the Open Library
 # project.
 # Translators:
-# Milo Ivir <mail@milotype.de>, 2020., 2022.
+# Milo Ivir <mail@milotype.de>, 2020., 2022., 2023
 #
 msgid ""
 msgstr ""
 "Project-Id-Version: Open Library VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
 "POT-Creation-Date: 2023-01-06 20:53+0000\n"
-"PO-Revision-Date: 2023-01-10 16:02+0100\n"
+"PO-Revision-Date: 2023-07-18 14:15+0200\n"
 "Last-Translator: Milo Ivir <mail@milotype.de>\n"
 "Language-Team: \n"
 "Language: hr\n"
@@ -98,11 +98,11 @@ msgstr "Skener barkoda (Beta)"
 msgid "Point your camera at a barcode! 📷"
 msgstr "Usmjeri kameru na barkod! 📷"
 
-#: account/loans.html:63 borrow_admin.html:104
+#: account/loans.html:59
 #, python-format
-msgid "1 Current Loan"
+msgid "%(count)d Current Loan"
 msgid_plural "%(count)d Current Loans"
-msgstr[0] "1 trenutačna posudba"
+msgstr[0] "%(count)d trenutačna posudba"
 msgstr[1] "%(count)d trenutačne posudbe"
 msgstr[2] "%(count)d trenutačnih posudbi"
 
@@ -116,7 +116,7 @@ msgid "%d person waiting"
 msgid_plural "%d people waiting"
 msgstr[0] "%d osoba čeka"
 msgstr[1] "%d osobe čekaju"
-msgstr[2] "%d osoba čeka"
+msgstr[2] "%d osoba čekaju"
 
 #: ManageWaitlistButton.html:11 borrow_admin.html:186
 #, python-format
@@ -420,12 +420,12 @@ msgstr "Vremena"
 msgid "See all works"
 msgstr "Pogledaj sva djela"
 
-#: merge/authors.html:93 publishers/view.html:17 subjects.html:19
-#: type/author/view.html:121
+#: merge/authors.html:89 publishers/view.html:13 subjects.html:15
+#: type/author/view.html:117
 #, python-format
-msgid "1 work"
+msgid "%(count)d work"
 msgid_plural "%(count)d works"
-msgstr[0] "1 djelo"
+msgstr[0] "%(count)d djelo"
 msgstr[1] "%(count)d djela"
 msgstr[2] "%(count)d djela"
 
@@ -494,13 +494,13 @@ msgstr "Ništa nije pronađeno."
 msgid "See more books by, and learn about, this author"
 msgstr "Pogledaj još knjiga ovog autora i saznaj više o njemu"
 
-#: account/loans.html:147 authors/index.html:28 publishers/view.html:83
-#: search/authors.html:57 search/publishers.html:29 search/subjects.html:73
-#: subjects.html:88
+#: account/loans.html:143 authors/index.html:24 publishers/view.html:79
+#: search/authors.html:56 search/publishers.html:29 search/subjects.html:66
+#: subjects.html:84
 #, python-format
-msgid "1 book"
+msgid "%(count)d book"
 msgid_plural "%(count)d books"
-msgstr[0] "1 knjiga"
+msgstr[0] "%(count)d knjiga"
 msgstr[1] "%(count)d knjige"
 msgstr[2] "%(count)d knjiga"
 
@@ -516,12 +516,12 @@ msgstr "koji su napisali najviše knjiga u ovom području"
 msgid "Get more information about this publisher"
 msgstr "Saznaj više o ovom izdavaču"
 
-#: SearchResultsWork.html:86 books/check.html:36 merge/authors.html:86
-#: publishers/view.html:106 subjects.html:111
+#: SearchResultsWork.html:82 books/check.html:32 merge/authors.html:82
+#: publishers/view.html:102 subjects.html:107
 #, python-format
-msgid "1 edition"
+msgid "%(count)s edition"
 msgid_plural "%(count)s editions"
-msgstr[0] "1 izdanje"
+msgstr[0] "%(count)s izdanje"
 msgstr[1] "%(count)s izdanja"
 msgstr[2] "%(count)s izdanja"
 
@@ -862,12 +862,12 @@ msgstr "Tražiti knjige s izrazom „%s”?"
 msgid "Add a new book to Open Library?"
 msgstr "Dodati novu knjigu u Open Library?"
 
-#: account/reading_log.html:40 search/authors.html:44 search/subjects.html:35
-#: work_search.html:194
+#: account/reading_log.html:36 search/authors.html:41 search/subjects.html:31
+#: work_search.html:190
 #, python-format
-msgid "1 hit"
+msgid "%(count)s hit"
 msgid_plural "%(count)s hits"
-msgstr[0] "1 rezultat"
+msgstr[0] "%(count)s rezultat"
 msgstr[1] "%(count)s rezultata"
 msgstr[2] "%(count)s rezultata"
 
@@ -2839,7 +2839,6 @@ msgid "Buy"
 msgstr "Kupi"
 
 #: books/edit/edition.html:675
-#| msgid "Website"
 msgid "Web"
 msgstr "Web"
 
@@ -3237,11 +3236,11 @@ msgstr "Pregledaj po području"
 msgid "browse %(subject)s books"
 msgstr "pregledaj knjige u području %(subject)s"
 
-#: home/categories.html:31
+#: home/categories.html:27
 #, python-format
-msgid "1 Book"
+msgid "%(count)s Book"
 msgid_plural "%(count)s Books"
-msgstr[0] "1 knjiga"
+msgstr[0] "%(count)s knjiga"
 msgstr[1] "%(count)s knjige"
 msgstr[2] "%(count)s knjiga"
 
@@ -3477,11 +3476,11 @@ msgstr "Kronologija"
 msgid "Created %(date)s"
 msgstr "Stvoreno %(date)s"
 
-#: lib/history.html:32
+#: lib/history.html:28
 #, python-format
-msgid "1 revision"
+msgid "%(count)d revision"
 msgid_plural "%(count)d revisions"
-msgstr[0] "1 revizija"
+msgstr[0] "%(count)d revizija"
 msgstr[1] "%(count)d revizije"
 msgstr[2] "%(count)d revizija"
 
@@ -3901,12 +3900,12 @@ msgstr "Popisi aktivnih"
 msgid "from <a href=\"%(key)s\">%(owner)s</a>"
 msgstr "Vlasnik: <a href=\"%(key)s\">%(owner)s</a>"
 
-#: lists/home.html:51 lists/preview.html:23 lists/snippet.html:18
-#: type/list/embed.html:18 type/list/view_body.html:39
+#: lists/home.html:47 lists/preview.html:19 lists/snippet.html:14
+#: type/list/embed.html:12 type/list/view_body.html:35
 #, python-format
-msgid "1 item"
+msgid "%(count)d item"
 msgid_plural "%(count)d items"
-msgstr[0] "1 element"
+msgstr[0] "%(count)d element"
 msgstr[1] "%(count)d elementa"
 msgstr[2] "%(count)d elemenata"
 
@@ -4022,7 +4021,7 @@ msgstr "Nijedan autor nije odabran."
 
 #: merge/authors.html:22
 msgid "Please select a primary author record."
-msgstr "Odaberi primarni zapis za autora."
+msgstr "Odaberi zapis primarnog autora."
 
 #: merge/authors.html:24
 msgid "Please select some authors to merge."
@@ -4046,7 +4045,7 @@ msgstr "Nema primarnog zapisa"
 
 #: merge/authors.html:39
 msgid "You must select a primary record to point the duplicates toward."
-msgstr "Moraš odabrati primarni zapis prema kojemu se duplikati usmjeravaju."
+msgstr "Moraš odabrati primarni zapis na koji će duplikati ukazivati."
 
 #: merge/authors.html:43
 msgid "Please Be Careful..."
@@ -4165,7 +4164,6 @@ msgstr "Djelo"
 
 #: merge_queue/merge_queue.html:84
 #, python-format
-#| msgid "Merge request for <span class=\"book-title\">%(title)s</span>"
 msgid ""
 "<strong>%(type)s</strong> merge request for <span class=\"book-title\">"
 "%(title)s</span>"
@@ -4218,11 +4216,11 @@ msgstr "Nismo pronašli nijednu izdanu knjigu izdavača %(publisher)s."
 msgid "Try something else?"
 msgstr "Želiš li pokušati nešto drugo?"
 
-#: publishers/view.html:19
+#: publishers/view.html:15
 #, python-format
-msgid "1 ebook"
+msgid "%(count)s ebook"
 msgid_plural "%(count)s ebooks"
-msgstr[0] "1 e-knjiga"
+msgstr[0] "%(count)s e-knjiga"
 msgstr[1] "%(count)s e-knjige"
 msgstr[2] "%(count)s e-knjiga"
 
@@ -4322,11 +4320,19 @@ msgstr "Glavni"
 msgid "Duplicates"
 msgstr "Duplikati"
 
-#: recentchanges/merge-authors/view.html:49
+#: recentchanges/merge/comment.html:20
 #, python-format
-msgid "1 record modified."
+msgid "Merged %(count)d duplicate %(type)s record into this primary."
+msgid_plural "Merged %(count)d duplicate %(type)s records into this primary."
+msgstr[0] "Sjedinjen %(count)d dupli zapis za %(type)s u ovaj primarni."
+msgstr[1] "Sjedinjena %(count)d dupla zapis za %(type)s u ovaj primarni."
+msgstr[2] "Sjedinjeno %(count)d duplih zapisa za %(type)s u ovaj primarni."
+
+#: recentchanges/merge/view.html:51
+#, python-format
+msgid "%(count)d record modified."
 msgid_plural "%(count)d records modified."
-msgstr[0] "1 zapis promijenjen."
+msgstr[0] "%(count)d zapis promijenjen."
 msgstr[1] "%(count)d zapisa promijenjena."
 msgstr[2] "%(count)d zapisa promijenjeno."
 
@@ -4380,13 +4386,21 @@ msgstr "Traži unutar"
 msgid "No hits for: %(query)s"
 msgstr "Nema rezultata za: %(query)s"
 
-#: search/inside.html:37
+#: search/inside.html:29
 #, python-format
-msgid "About 1 result found in %(seconds)s"
-msgid_plural "About %(count)s results found in %(seconds)s"
-msgstr[0] "Pronađen je otprilike 1 rezultat u roku od %(seconds)s"
-msgstr[1] "Pronađena su otprilike %(count)s rezultata u roku od %(seconds)s"
-msgstr[2] "Pronađeno je otprilike %(count)s rezultata u roku od %(seconds)s"
+msgid "About %(count)s result found"
+msgid_plural "About %(count)s results found"
+msgstr[0] "Pronađen je otprilike %(count)s rezultat u roku"
+msgstr[1] "Pronađena su otprilike %(count)s rezultata u roku"
+msgstr[2] "Pronađeno je otprilike %(count)s rezultata u roku"
+
+#: search/inside.html:29
+#, python-format
+msgid "in %(seconds)s second"
+msgid_plural "in %(seconds)s seconds"
+msgstr[0] "od %(seconds)s"
+msgstr[1] "od %(seconds)s"
+msgstr[2] "od %(seconds)s"
 
 #: search/lists.html:7
 msgid "Search results for Lists"
@@ -4528,12 +4542,12 @@ msgstr "Ukupni broj ocjenjivača (svo vrijeme)"
 msgid "Most Wanted Books (This Month)"
 msgstr "Najtraženije knjige (ovaj mjesec)"
 
-#: stats/readinglog.html:71 stats/readinglog.html:79 stats/readinglog.html:88
-#: stats/readinglog.html:97
+#: stats/readinglog.html:67 stats/readinglog.html:75 stats/readinglog.html:84
+#: stats/readinglog.html:93
 #, python-format
-msgid "Added 1 time"
+msgid "Added %(count)d time"
 msgid_plural "Added %(count)d times"
-msgstr[0] "Dodano 1 puta"
+msgstr[0] "Dodano %(count)d puta"
 msgstr[1] "Dodano %(count)d puta"
 msgstr[2] "Dodano %(count)d puta"
 
@@ -5234,11 +5248,11 @@ msgstr "Dodaj još jedno"
 msgid "Title missing"
 msgstr "Naslov nedostaje"
 
-#: type/work/editions_datatable.html:13
+#: type/work/editions_datatable.html:9
 #, python-format
-msgid "Showing one featured edition."
+msgid "Showing %(count)d featured edition."
 msgid_plural "Showing %(count)d featured editions."
-msgstr[0] "Prikazuje se jedno preporučeno izdanje."
+msgstr[0] "Prikazuje se %(count)d preporučeno izdanje."
 msgstr[1] "Prikazuju se %(count)d preporučena izdanja."
 msgstr[2] "Prikazuje se %(count)d preporučenih izdanja."
 
@@ -5284,11 +5298,11 @@ msgstr "Bookshop.org"
 msgid "Look for this edition for sale at %(store)s"
 msgstr "Traži ovo izdanje na rasprodaji na %(store)s"
 
-#: BookByline.html:20
+#: BookByline.html:11
 #, python-format
-msgid "1 other"
+msgid "%(n)s other"
 msgid_plural "%(n)s others"
-msgstr[0] "još 1"
+msgstr[0] "još %(n)s"
 msgstr[1] "još %(n)s"
 msgstr[2] "još %(n)s"
 
@@ -5482,7 +5496,7 @@ msgid_plural ""
 "in <a class=\"hoverlink\" title=\"%(langs)s\">%(count)d languages</a>"
 msgstr[0] "na <a class=\"hoverlink\" title=\"%(langs)s\">jednom jeziku</a>"
 msgstr[1] "na <a class=\"hoverlink\" title=\"%(langs)s\">%(count)d jezika</a>"
-msgstr[2] "na <a class=„hoverlink” title=„%(langs)s”>%(count)d jezika</a>"
+msgstr[2] "na <a class=\"hoverlink\" title=\"%(langs)s\">%(count)d jezika</a>"
 
 #: SearchResultsWork.html:92
 #, python-format
@@ -5783,6 +5797,13 @@ msgstr ""
 #: forms.py:151
 msgid "Invalid password"
 msgstr "Neispravna lozinka"
+
+#, python-format
+#~ msgid "1 ebook"
+#~ msgid_plural "%(count)s ebooks"
+#~ msgstr[0] "1 e-knjiga"
+#~ msgstr[1] "%(count)s e-knjige"
+#~ msgstr[2] "%(count)s e-knjiga"
 
 #~ msgid "Profile Page"
 #~ msgstr "Stranica profila"

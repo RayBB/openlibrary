@@ -1,4 +1,5 @@
-from typing import Callable, Literal, Optional
+from typing import Literal, Optional
+from collections.abc import Callable
 from luqum.parser import parser
 from luqum.tree import Item, SearchField, BaseOperation, Group, Word, Unary
 import re
@@ -131,10 +132,12 @@ def fully_escape_query(query: str) -> str:
     'x\\\\:\\\\[A TO Z\\\\}'
     >>> fully_escape_query('foo AND bar')
     'foo and bar'
+    >>> fully_escape_query("foo's bar")
+    "foo\\\\'s bar"
     """
     escaped = query
     # Escape special characters
-    escaped = re.sub(r'[\[\]\(\)\{\}:"\-+?~^/\\,]', r'\\\g<0>', escaped)
+    escaped = re.sub(r'[\[\]\(\)\{\}:"\-+?~^/\\,\']', r'\\\g<0>', escaped)
     # Remove boolean operators by making them lowercase
     escaped = re.sub(r'AND|OR|NOT', lambda _1: _1.group(0).lower(), escaped)
     return escaped
@@ -165,7 +168,7 @@ def luqum_parser(query: str) -> Item:
     """
     tree = parser.parse(query)
 
-    def find_next_word(item: Item) -> Optional[tuple[Word, Optional[BaseOperation]]]:
+    def find_next_word(item: Item) -> tuple[Word, BaseOperation | None] | None:
         if isinstance(item, Word):
             return item, None
         elif isinstance(item, BaseOperation) and isinstance(item.children[0], Word):

@@ -7,8 +7,6 @@ import 'jquery-colorbox';
 // jquery.form#2.36 not on npm, no longer getting worked on
 import '../../../../vendor/js/jquery-form/jquery.form.js';
 import autocompleteInit from './autocomplete';
-// Used only by the openlibrary/templates/books/edit/addfield.html template
-import addNewFieldInit from './add_new_field';
 import automaticInit from './automatic';
 import bookReaderInit from './bookreader_direct';
 import { ungettext, ugettext,  sprintf } from './i18n';
@@ -21,7 +19,7 @@ import { commify } from './python';
 import { Subject, urlencode, slice } from './subjects';
 import Template from './template.js';
 // Add $.fn.focusNextInputField
-import { closePopup, truncate, cond } from './utils';
+import { truncate, cond } from './utils';
 import initValidate from './validate';
 import '../../../../static/css/js-all.less';
 // polyfill Promise support for IE11
@@ -30,8 +28,6 @@ import { confirmDialog, initDialogs } from './dialog';
 
 // Eventually we will export all these to a single global ol, but in the mean time
 // we add them to the window object for backwards compatibility.
-// closePopup used in openlibrary/templates/covers/saved.html
-window.closePopup = closePopup;
 window.commify = commify;
 window.cond = cond;
 window.enumerate = enumerate;
@@ -107,7 +103,6 @@ jQuery(function () {
 
     initValidate($);
     autocompleteInit($);
-    addNewFieldInit($);
     automaticInit($);
     // wmd editor
     if ($markdownTextAreas.length) {
@@ -125,21 +120,24 @@ jQuery(function () {
 
     const edition = document.getElementById('tabsAddbook');
     const autocompleteAuthor = document.querySelector('.multi-input-autocomplete--author');
+    const autocompleteLanguage = document.querySelector('.multi-input-autocomplete--language');
+    const autocompleteWorks = document.querySelector('.multi-input-autocomplete--works');
+    const autocompleteSeeds = document.querySelector('.multi-input-autocomplete--seeds');
+    const autocompleteSubjects = document.querySelector('.csv-autocomplete--subjects');
     const addRowButton = document.getElementById('add_row_button');
     const roles = document.querySelector('#roles');
     const identifiers = document.querySelector('#identifiers');
     const classifications = document.querySelector('#classifications');
-    const autocompleteLanguage = document.querySelector('.multi-input-autocomplete--language');
-    const autocompleteWorks = document.querySelector('.multi-input-autocomplete--works');
-    const autocompleteSubjects = document.querySelector('.csv-autocomplete--subjects');
     const excerpts = document.getElementById('excerpts');
     const links = document.getElementById('links');
 
     // conditionally load for user edit page
     if (
         edition ||
-        autocompleteAuthor || addRowButton || roles || identifiers || classifications ||
-        autocompleteLanguage || autocompleteWorks || excerpts || links
+        autocompleteAuthor || autocompleteLanguage || autocompleteWorks ||
+        autocompleteSeeds || autocompleteSubjects ||
+        addRowButton || roles || identifiers || classifications ||
+        excerpts || links
     ) {
         import(/* webpackChunkName: "user-website" */ './edit')
             .then(module => {
@@ -176,6 +174,9 @@ jQuery(function () {
                 if (autocompleteSubjects) {
                     module.initSubjectsAutocomplete();
                 }
+                if (autocompleteSeeds) {
+                    module.initSeedsMultiInputAutocomplete();
+                }
             });
     }
 
@@ -194,19 +195,26 @@ jQuery(function () {
             });
     }
 
+    // conditionally load for type changing input
+    const typeChanger = document.getElementById('type.key')
+    if (typeChanger) {
+        import(/* webpackChunkName: "type-changer" */ './type_changer.js')
+            .then(module => module.initTypeChanger(typeChanger));
+    }
+
     // conditionally load real time signup functionality based on class in the page
     if (document.getElementsByClassName('olform create validate').length) {
         import(/* webpackChunkName: "realtime-account-validation" */'./realtime_account_validation.js')
             .then(module => module.initRealTimeValidation());
     }
-    // conditionally load readmore button based on class in the page
-    const readMoreButtons = document.getElementsByClassName('read-more-button');
+    // conditionally load clamping components
+    const readMoreComponents = document.getElementsByClassName('read-more');
     const clampers = document.querySelectorAll('.clamp');
-    if (readMoreButtons.length || clampers.length) {
+    if (readMoreComponents.length || clampers.length) {
         import(/* webpackChunkName: "readmore" */ './readmore.js')
             .then(module => {
-                if (readMoreButtons.length) {
-                    module.initReadMoreButton();
+                if (readMoreComponents.length) {
+                    module.ReadMoreComponent.init();
                 }
                 if (clampers.length) {
                     module.initClampers(clampers);
@@ -222,6 +230,10 @@ jQuery(function () {
     if (document.getElementsByClassName('RelatedWorksCarousel').length) {
         import(/* webpackChunkName: "carousels-partials" */'./carousels_partials.js')
             .then(module => module.initCarouselsPartials());
+    }
+    // conditionally load list seed item deletion dialog functionality based on id on lists pages
+    if (document.getElementById('listResults')) {
+        import(/* webpackChunkName: "ListViewBody" */'./lists/ListViewBody.js');
     }
     // Enable any carousels in the page
     if ($carouselElements.length) {
@@ -239,9 +251,11 @@ jQuery(function () {
             .then((module) => module.init());
     }
 
-    if (window.READINGLOG_STATS_CONFIG) {
+    const readingLogCharts = document.querySelector('.readinglog-charts')
+    if (readingLogCharts) {
+        const readingLogConfig = JSON.parse(readingLogCharts.dataset.config)
         import(/* webpackChunkName: "readinglog-stats" */ './readinglog_stats')
-            .then(module => module.init(window.READINGLOG_STATS_CONFIG));
+            .then(module => module.init(readingLogConfig));
     }
 
     const pageEl = $('#page-barcodescanner');
@@ -256,6 +270,11 @@ jQuery(function () {
                 Array.from(document.getElementsByClassName('toast'))
                     .forEach(el => new module.Toast($(el)));
             });
+    }
+
+    if ($('.lazy-thing-preview').length) {
+        import(/* webpackChunkName: "lazy-thing-preview" */ './lazy-thing-preview')
+            .then((module) => new module.LazyThingPreview().init());
     }
 
     const $observationModalLinks = $('.observations-modal-link');
@@ -354,28 +373,25 @@ jQuery(function () {
         $('#cboxSlideshow').attr({'aria-label': 'Slideshow button', 'aria-hidden': 'true'});
     }
 
-    // "Want to Read" buttons:
-    const droppers = document.getElementsByClassName('widget-add');
-
-    // Async lists components:
-    const wtrLoadingIndicator = document.querySelector('.list-loading-indicator')
-    const overviewLoadingIndicator = document.querySelector('.list-overview-loading-indicator')
-
-    if (droppers.length || wtrLoadingIndicator || overviewLoadingIndicator) {
-        import(/* webpackChunkName: "lists" */ './lists')
+    const droppers = document.querySelectorAll('.dropper')
+    const genericDroppers = document.querySelectorAll('.generic-dropper-wrapper')
+    if (droppers.length || genericDroppers.length) {
+        import(/* webpackChunkName: "droppers" */ './dropper')
             .then((module) => {
-                if (droppers.length) {
-                    module.initDroppers(droppers);
-                    // Removable list items:
-                    // TODO: Is this the correct place to initalize these?
-                    const actionableListItems = document.querySelectorAll('.actionable-item')
-                    module.registerListItems(actionableListItems);
-                }
-                if (wtrLoadingIndicator || overviewLoadingIndicator) {
-                    module.initListLoading(wtrLoadingIndicator, overviewLoadingIndicator)
-                }
-            }
-            );
+                module.initDroppers(droppers)
+                module.initGenericDroppers(genericDroppers)
+            })
+    }
+
+    // My Books Droppers:
+    const myBooksDroppers = document.querySelectorAll('.my-books-dropper')
+    if (myBooksDroppers.length) {
+        const actionableListShowcases = document.querySelectorAll('.actionable-item')
+
+        import(/* webpackChunkName: "my-books" */ './my-books')
+            .then((module) => {
+                module.initMyBooksAffordances(myBooksDroppers, actionableListShowcases)
+            })
     }
 
     const nativeDialogs = document.querySelectorAll('.native-dialog')
@@ -443,41 +459,42 @@ jQuery(function () {
             .then((module) => module.initRatingHandlers(ratingForms));
     }
 
-    const navbar = document.querySelector('.work-menu');
-    if (navbar) {
-        const compactTitle = document.querySelector('.compact-title')
-        // Add position-aware navbar JS:
+    // Book page navbar initialization:
+    const navbarWrappers = document.querySelectorAll('.nav-bar-wrapper')
+    if (navbarWrappers.length) {
+        // Add JS for book page navbar:
         import(/* webpackChunkName: "nav-bar" */ './edition-nav-bar')
-            .then((module) => module.initNavbar(navbar));
-        // Add sticky title component animations:
+            .then((module) => {
+                module.initNavbars(navbarWrappers)
+            });
+        // Add sticky title component animations to desktop views:
         import(/* webpackChunkName: "compact-title" */ './compact-title')
-            .then((module) => module.initCompactTitle(navbar, compactTitle))
+            .then((module) => {
+                const compactTitle = document.querySelector('.compact-title')
+                const desktopNavbar = [...navbarWrappers].find(elem => elem.classList.contains('desktop-only'))
+                module.initCompactTitle(desktopNavbar, compactTitle)
+            })
     }
 
     // Add functionality for librarian merge request table:
-    const mergeRequestCloseLinks = document.querySelectorAll('.mr-close-link')
-    const mergeRequestResolveLinks = document.querySelectorAll('.mr-resolve-link')
-    const mergeRequestCommentButtons = document.querySelectorAll('.mr-comment-btn')
-    const showCommentsLinks = document.querySelectorAll('.comment-expand')
-    const unassignElements = document.querySelectorAll('.mr-unassign')
+    const librarianQueue = document.querySelector('.librarian-queue-wrapper')
 
-    if (mergeRequestCloseLinks.length || mergeRequestCommentButtons.length || showCommentsLinks.length || mergeRequestResolveLinks.length || unassignElements.length) {
+    if (librarianQueue) {
         import(/* webpackChunkName: "merge-request-table" */'./merge-request-table')
             .then(module => {
-                if (mergeRequestCloseLinks.length) {
-                    module.initCloseLinks(mergeRequestCloseLinks)
+                if (librarianQueue) {
+                    module.initLibrarianQueue(librarianQueue)
                 }
-                if (mergeRequestCommentButtons.length) {
-                    module.initCommenting(mergeRequestCommentButtons)
-                }
-                if (showCommentsLinks.length) {
-                    module.initShowAllCommentsLinks(showCommentsLinks)
-                }
-                if (mergeRequestResolveLinks.length) {
-                    module.initRequestClaiming(mergeRequestResolveLinks)
-                }
-                if (unassignElements.length) {
-                    module.initUnassignment(unassignElements)
+            })
+    }
+
+    // Add functionality to the team page for filtering members:
+    const teamCards = document.querySelector('.teamCards_container')
+    if (teamCards) {
+        import('./team')
+            .then(module => {
+                if (teamCards) {
+                    module.initTeamFilter();
                 }
             })
     }
@@ -488,4 +505,25 @@ jQuery(function () {
         import(/* webpackChunkName "add-provider-link" */ './add_provider')
             .then(module => module.initAddProviderRowLink(addProviderRowLink))
     }
+
+
+    // Allow banner announcements to be dismissed by logged-in users:
+    const banners = document.querySelectorAll('.page-banner--dismissable')
+    if (banners.length) {
+        import(/* webpackChunkName: "dismissible-banner" */ './banner')
+            .then(module => module.initDismissibleBanners(banners))
+    }
+
+    const returnForms = document.querySelectorAll('.return-form')
+    if (returnForms.length) {
+        import(/* webpackChunkName: "return-form" */ './return-form')
+            .then(module => module.initReturnForms(returnForms))
+    }
+
+    const crumbs = document.querySelectorAll('.crumb select');
+    if (crumbs.length) {
+        import(/* webpackChunkName: "breadcrumb-select" */ './breadcrumb_select')
+            .then(module => module.initBreadcrumbSelect(crumbs));
+    }
+
 });

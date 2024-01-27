@@ -16,8 +16,8 @@ from infogami.plugins.api.code import jsonapi
 from infogami.utils.view import add_flash_message
 from openlibrary import accounts
 from openlibrary.plugins.openlibrary.code import can_write
-from openlibrary.utils.isbn import isbn_10_to_isbn_13, normalize_isbn
 from openlibrary.utils import extract_numeric_id_from_olid
+from openlibrary.utils.isbn import isbn_10_to_isbn_13, normalize_isbn
 from openlibrary.plugins.worksearch.subjects import get_subject
 from openlibrary.accounts.model import OpenLibraryAccount
 from openlibrary.core import ia, db, models, lending, helpers as h
@@ -498,7 +498,7 @@ class price_api(delegate.page):
             ed = web.ctx.site.get(book_key)
             if ed:
                 metadata['key'] = ed.key
-                if getattr(ed, 'ocaid'):
+                if getattr(ed, 'ocaid'):  # noqa: B009
                     metadata['ocaid'] = ed.ocaid
 
         return json.dumps(metadata)
@@ -591,21 +591,38 @@ class work_delete(delegate.page):
     path = r"/works/(OL\d+W)/[^/]+/delete"
 
     def get_editions_of_work(self, work: Work) -> list[dict]:
+        i = web.input(bulk=False)
         limit = 1_000  # This is the max limit of the things function
-        keys: list = web.ctx.site.things(
-            {"type": "/type/edition", "works": work.key, "limit": limit}
-        )
-        if len(keys) == limit:
-            raise web.HTTPError(
-                '400 Bad Request',
-                data=json.dumps(
-                    {
-                        'error': f'API can only delete {limit} editions per work',
-                    }
-                ),
-                headers={"Content-Type": "application/json"},
+        all_keys: list = []
+        offset = 0
+
+        while True:
+            keys: list = web.ctx.site.things(
+                {
+                    "type": "/type/edition",
+                    "works": work.key,
+                    "limit": limit,
+                    "offset": offset,
+                }
             )
-        return web.ctx.site.get_many(keys, raw=True)
+            all_keys.extend(keys)
+            if len(keys) == limit:
+                if not i.bulk:
+                    raise web.HTTPError(
+                        '400 Bad Request',
+                        data=json.dumps(
+                            {
+                                'error': f'API can only delete {limit} editions per work.',
+                            }
+                        ),
+                        headers={"Content-Type": "application/json"},
+                    )
+                else:
+                    offset += limit
+            else:
+                break
+
+        return web.ctx.site.get_many(all_keys, raw=True)
 
     def POST(self, work_id: str):
         if not can_write():
@@ -633,4 +650,22 @@ class work_delete(delegate.page):
                 }
             ),
             content_type="application/json",
+        )
+
+
+class hide_banner(delegate.page):
+    path = '/hide_banner'
+
+    def POST(self):
+        data = json.loads(web.data())
+
+        # Set truthy cookie that expires in 30 days:
+        DAY_SECONDS = 60 * 60 * 24
+        cookie_duration_days = int(data.get('cookie-duration-days', 30))
+        web.setcookie(
+            data['cookie-name'], '1', expires=(cookie_duration_days * DAY_SECONDS)
+        )
+
+        return delegate.RawText(
+            json.dumps({'success': 'Preference saved'}), content_type="application/json"
         )

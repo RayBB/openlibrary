@@ -15,11 +15,11 @@ import datetime
 import logging
 import os
 import re
-from typing import TypedDict, cast
+from typing import cast
 
 import requests
 
-from infogami import config  # noqa: F401
+from infogami import config
 from openlibrary.config import load_config
 from openlibrary.core.imports import Batch
 from scripts.solr_builder.solr_builder.fn_to_cli import FnToCLI
@@ -121,7 +121,7 @@ class Biblio:
         self.isbn_13 = [self.isbn]
         self.title = data[10]
         self.primary_format = data[6]
-        self.publish_date = data[20][:4]  # YYYY, YYYYMMDD
+        self.publish_date = data[20][:4]  # YYYY
         self.publishers = [data[135]]
         self.weight = data[39]
         self.authors = self.contributors(data)
