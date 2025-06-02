@@ -106,48 +106,41 @@ class home(delegate.page):
         return web.template.TemplateResult(cached_homepage)
 
 
-class random_book(delegate.page):
+class random_book(delegate.page): # Ensure 'delegate.page' is correct
     path = "/random"
 
-    def GET(self):
-        solr = search.get_solr() # Assuming solr comes from search.get_solr()
+    def _get_random_book_key_from_solr(self, solr_instance, solr_query_str):
+        results = solr_instance.select(
+            solr_query_str,
+            fields=['key'],
+            rows=1,
+            sort=f'random_{random.random()} desc', # random needs to be available in this scope
+        )
+        if results['docs']:
+            return results['docs'][0]['key']
+        return None
 
-        user_iso_language = web.ctx.lang or 'en'
-        marc_language_code = convert_iso_to_marc(user_iso_language)
-        populated_languages = get_populated_languages()
+    def GET(self):
+        solr = search.get_solr() # search needs to be available
+
+        user_iso_language = web.ctx.lang or 'en' # web needs to be available
+        marc_language_code = convert_iso_to_marc(user_iso_language) # convert_iso_to_marc needs to be available
+        populated_languages = get_populated_languages() # get_populated_languages needs to be available
 
         book_key = None
 
         if marc_language_code and marc_language_code in populated_languages:
             language_specific_query = f"type:edition AND ebook_access:[borrowable TO *] AND language:{marc_language_code}"
-            # Use a new random seed for this attempt
-            lang_specific_results = solr.select(
-                language_specific_query,
-                fields=['key'],
-                rows=1,
-                sort=f'random_{random.random()} desc', 
-            )
-            if lang_specific_results['docs']:
-                book_key = lang_specific_results['docs'][0]['key']
+            book_key = self._get_random_book_key_from_solr(solr, language_specific_query)
 
-        if not book_key: # Fallback if no language-specific book found or language not applicable
+        if not book_key:
             base_solr_query = 'type:edition AND ebook_access:[borrowable TO *]'
-            # Use a new random seed for the fallback attempt
-            fallback_results = solr.select(
-                base_solr_query,
-                fields=['key'],
-                rows=1,
-                sort=f'random_{random.random()} desc',
-            )
-            if fallback_results['docs']:
-                book_key = fallback_results['docs'][0]['key']
+            book_key = self._get_random_book_key_from_solr(solr, base_solr_query)
 
         if book_key:
             raise web.seeother(book_key)
         else:
-            # Should be rare, but if no books are found at all
-            # Optionally, add a flash message for the user
-            # web.ctx.flash_message_error("No random books could be found at this time.")
+            # web.ctx.flash_message_error("No random books could be found at this time.") # Optional flash message
             raise web.seeother('/')
 
 
