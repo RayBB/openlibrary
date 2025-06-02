@@ -11,7 +11,7 @@ from infogami.utils import delegate
 from infogami.utils.view import public, render_template
 from openlibrary.core import admin, cache, ia, lending
 from openlibrary.i18n import gettext as _
-from openlibrary.plugins.upstream.utils import get_blog_feeds
+from openlibrary.plugins.upstream.utils import get_blog_feeds, convert_iso_to_marc, get_populated_languages
 from openlibrary.plugins.worksearch import search, subjects
 from openlibrary.utils import dateutil
 
@@ -110,14 +110,45 @@ class random_book(delegate.page):
     path = "/random"
 
     def GET(self):
-        solr = search.get_solr()
-        key = solr.select(
-            'type:edition AND ebook_access:[borrowable TO *]',
-            fields=['key'],
-            rows=1,
-            sort=f'random_{random.random()} desc',
-        )['docs'][0]['key']
-        raise web.seeother(key)
+        solr = search.get_solr() # Assuming solr comes from search.get_solr()
+
+        user_iso_language = web.ctx.lang or 'en'
+        marc_language_code = convert_iso_to_marc(user_iso_language)
+        populated_languages = get_populated_languages()
+
+        book_key = None
+
+        if marc_language_code and marc_language_code in populated_languages:
+            language_specific_query = f"type:edition AND ebook_access:[borrowable TO *] AND language:{marc_language_code}"
+            # Use a new random seed for this attempt
+            lang_specific_results = solr.select(
+                language_specific_query,
+                fields=['key'],
+                rows=1,
+                sort=f'random_{random.random()} desc', 
+            )
+            if lang_specific_results['docs']:
+                book_key = lang_specific_results['docs'][0]['key']
+
+        if not book_key: # Fallback if no language-specific book found or language not applicable
+            base_solr_query = 'type:edition AND ebook_access:[borrowable TO *]'
+            # Use a new random seed for the fallback attempt
+            fallback_results = solr.select(
+                base_solr_query,
+                fields=['key'],
+                rows=1,
+                sort=f'random_{random.random()} desc',
+            )
+            if fallback_results['docs']:
+                book_key = fallback_results['docs'][0]['key']
+
+        if book_key:
+            raise web.seeother(book_key)
+        else:
+            # Should be rare, but if no books are found at all
+            # Optionally, add a flash message for the user
+            # web.ctx.flash_message_error("No random books could be found at this time.")
+            raise web.seeother('/')
 
 
 def get_ia_carousel_books(query=None, subject=None, sorts=None, limit=None):
