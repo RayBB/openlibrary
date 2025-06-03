@@ -87,25 +87,53 @@ export function initCoversSaved() {
 
     // Update the image for the cover
     if (['/type/edition', '/type/work', '/edit'].includes(doc_type_key)) {
+        const $imageElement = parent.$(cover_selector);
         if (image) {
             cover_url = `${coverstore_url}/b/id/${image}-M.jpg`;
-            // XXX-Anand: Fix this hack
-            // set url and  show SRPCover  and hide SRPCoverBlank
-            parent.$(cover_selector).attr('src', cover_url)
-                .parents('div:first').show()
-                .next().hide();
-            parent.$(cover_selector).attr('srcset', cover_url)
-                .parents('div:first').show()
-                .next().hide();
-        }
-        else {
-            // hide SRPCover and show SRPCoverBlank
-            parent.$(cover_selector)
-                .parents('div:first').hide()
-                .next().show();
+
+            $imageElement.off('load').on('load', function() {
+                // $(this) refers to the image element here
+                const naturalWidth = this.naturalWidth;
+                const naturalHeight = this.naturalHeight;
+
+                if (naturalWidth && naturalHeight) {
+                    const targetWidth = 180; // Based on .illustration img { width: 180px; }
+                    const newHeight = (naturalHeight / naturalWidth) * targetWidth;
+                    $(this).css({
+                        'width': targetWidth + 'px',
+                        'height': newHeight + 'px'
+                    });
+                }
+                // Once loaded and resized, show the image's container and hide placeholder
+                $(this).parents('div:first').show().next().hide();
+            }).on('error', function() {
+                // Handle cases where the image fails to load
+                // For example, show the placeholder
+                $(this).parents('div:first').hide().next().show();
+            });
+
+            // Set src to trigger the load event
+            $imageElement.attr('src', cover_url);
+
+            // If srcset attribute exists, update it as well.
+            // Note: The 'load' event is primarily triggered by 'src'.
+            // If browsers prioritize srcset for loading, this might need more complex handling,
+            // but for typical scenarios, this should be okay.
+            if (typeof $imageElement.attr('srcset') !== 'undefined') {
+                $imageElement.attr('srcset', cover_url);
+            }
+
+        } else {
+            // No image ID, so hide SRPCover and show SRPCoverBlank
+            $imageElement.attr('src', ''); // Clear src to hide image
+             if (typeof $imageElement.attr('srcset') !== 'undefined') {
+                $imageElement.attr('srcset', ''); // Clear srcset
+            }
+            $imageElement.parents('div:first').hide().next().show();
         }
     }
     else {
+        // This part is for author photos, less critical for this specific bug
         if (image) {
             cover_url = `${coverstore_url}/a/id/${image}-M.jpg`;
         }
