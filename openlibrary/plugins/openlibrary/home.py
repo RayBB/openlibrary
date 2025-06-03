@@ -109,12 +109,18 @@ class home(delegate.page):
 class random_book(delegate.page): # Ensure 'delegate.page' is correct
     path = "/random"
 
-    def _get_random_book_key_from_solr(self, solr_instance, solr_query_str):
+    def _get_random_book_key_from_solr(self, solr_instance, language_marc_code=None):
+        query_parts = ['type:edition AND ebook_access:[borrowable TO *]']
+        if language_marc_code: # This will be true if a non-None, non-empty string is passed
+            query_parts.append(f"language:{language_marc_code}")
+        
+        final_query_str = " AND ".join(query_parts)
+        
         results = solr_instance.select(
-            solr_query_str,
+            final_query_str,
             fields=['key'],
             rows=1,
-            sort=f'random_{random.random()} desc', # random needs to be available in this scope
+            sort=f'random_{random.random()}' # Ensure 'random' module is imported at module level
         )
         if results['docs']:
             return results['docs'][0]['key']
@@ -125,22 +131,22 @@ class random_book(delegate.page): # Ensure 'delegate.page' is correct
 
         user_iso_language = web.ctx.lang or 'en' # web needs to be available
         marc_language_code = convert_iso_to_marc(user_iso_language) # convert_iso_to_marc needs to be available
-        populated_languages = get_populated_languages() # get_populated_languages needs to be available
 
         book_key = None
 
-        if marc_language_code and marc_language_code in populated_languages:
-            language_specific_query = f"type:edition AND ebook_access:[borrowable TO *] AND language:{marc_language_code}"
-            book_key = self._get_random_book_key_from_solr(solr, language_specific_query)
+        # Attempt to get book key (this will be language-specific if marc_language_code is not None,
+        # or a general search if marc_language_code is None)
+        book_key = self._get_random_book_key_from_solr(solr, marc_language_code)
 
-        if not book_key:
-            base_solr_query = 'type:edition AND ebook_access:[borrowable TO *]'
-            book_key = self._get_random_book_key_from_solr(solr, base_solr_query)
-
+        # Fallback attempt only if the first attempt failed AND it was a language-specific attempt
+        if not book_key and marc_language_code:
+            # Call without language code for a general (fallback) search
+            book_key = self._get_random_book_key_from_solr(solr) 
+        
         if book_key:
             raise web.seeother(book_key)
         else:
-            # web.ctx.flash_message_error("No random books could be found at this time.") # Optional flash message
+            # web.ctx.flash_message_error("No random books could be found at this time.") # This line remains commented out or removed
             raise web.seeother('/')
 
 
