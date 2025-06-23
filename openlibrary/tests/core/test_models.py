@@ -129,6 +129,65 @@ class TestAuthor:
         e = models.Author(MockSite(), "/authors/OL1A", data=data)
         assert e.url() == "/authors/OL1A/unnamed"
 
+    def test_show_wikidata_image_indicator(self, monkeypatch):
+        # Mock accounts.get_current_user
+        mock_user = models.User(MockSite(), "/people/testuser", data={
+            "key": "/people/testuser",
+            "type": {"key": "/type/user"}
+        })
+        monkeypatch.setattr(models.accounts, 'get_current_user', lambda: mock_user)
+
+        # Mock Author object
+        author_data = {
+            "key": "/authors/OL1A",
+            "type": {"key": "/type/author"},
+            "name": "Test Author",
+            "photos": [],
+            "remote_ids": {}
+        }
+        author = models.Author(MockSite(), "/authors/OL1A", data=author_data)
+
+        # Mock wikidata entity and image fetching
+        mock_wikidata_entity = models.wikidata.WikidataEntity(
+            id='Q123', type='item', labels={}, descriptions={}, aliases={},
+            statements={'P18': [{'value': {'content': 'SomeImage.jpg'}}]},
+            sitelinks={}, _updated=models.datetime.now()
+        )
+        mock_no_image_wikidata_entity = models.wikidata.WikidataEntity(
+            id='Q124', type='item', labels={}, descriptions={}, aliases={},
+            statements={}, sitelinks={}, _updated=models.datetime.now()
+        )
+
+        # Scenario 1: Not a librarian
+        monkeypatch.setattr(mock_user, 'is_librarian', lambda: False)
+        assert not author.show_wikidata_image_indicator()
+
+        # Scenario 2: Is a librarian
+        monkeypatch.setattr(mock_user, 'is_librarian', lambda: True)
+
+        # 2a: Author has photos
+        author.photos = [123] # Simulate existing photo
+        assert not author.show_wikidata_image_indicator()
+        author.photos = [] # Reset
+
+        # 2b: Author has no Wikidata ID
+        author.remote_ids = {}
+        assert not author.show_wikidata_image_indicator()
+
+        # 2c: Author has Wikidata ID, but no images on Wikidata
+        author.remote_ids = {"wikidata": "Q124"}
+        monkeypatch.setattr(author, 'wikidata', lambda fetch_missing: mock_no_image_wikidata_entity)
+        assert not author.show_wikidata_image_indicator()
+
+        # 2d: Author has Wikidata ID and images on Wikidata
+        author.remote_ids = {"wikidata": "Q123"}
+        monkeypatch.setattr(author, 'wikidata', lambda fetch_missing: mock_wikidata_entity)
+        assert author.show_wikidata_image_indicator()
+
+        # 2e: User not logged in
+        monkeypatch.setattr(models.accounts, 'get_current_user', lambda: None)
+        assert not author.show_wikidata_image_indicator()
+
 
 class TestSubject:
     def test_url(self):

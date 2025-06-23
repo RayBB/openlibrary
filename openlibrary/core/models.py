@@ -869,6 +869,24 @@ class Author(Thing):
                     matches = matches + 1
         return output, matches
 
+    def show_wikidata_image_indicator(self):
+        user = accounts.get_current_user()
+        if not (user and user.is_librarian()):
+            return False
+
+        if self.photos: # photos is a list of photo IDs
+            return False
+
+        if not self.remote_ids or not self.remote_ids.get("wikidata"):
+            return False
+
+        # Fetch missing is important here, we want to show the indicator
+        # if images are available on Wikidata, even if not cached locally.
+        entity = self.wikidata(fetch_missing=True)
+        if entity and entity.get_image_urls():
+            return True
+        return False
+
 
 class User(Thing):
     def get_default_preferences(self):

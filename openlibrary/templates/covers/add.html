@@ -93,3 +93,23 @@ $if doc.type.key == "/type/edition" and doc.ocaid:
             <button type="submit" id="coverIA" class="cta-btn cta-btn--vanilla" name="url" value="$img_url">$_("Upload Image")</button>
         </div>
     </form>
+
+$if doc.type.key == "/type/author" and data.get('wikidata_images'):
+    <form class="ol-cover-form ol-cover-form--wikidata" method="post" enctype="multipart/form-data" action="$action">
+        <div class="label">
+            <label>$_("Or, use an image from Wikidata")</label>
+        </div>
+        <div class="carousel-section">
+            <div id="wikidata-images" class="carousel-container carousel-container-decorated carousel--minimal">
+                <div class="carousel carousel--progressively-enhanced" data-config="$json_encode({'booksPerBreakpoint': [3, 3, 3, 3, 2, 1]})">
+                    $for img_url in data.get('wikidata_images', []):
+                        <div class="book carousel__item">
+                            <div class="book-cover">
+                                <img src="$img_url" width="100" class="bookcover"/>
+                                <button type="submit" name="url" value="$img_url" class="cta-btn cta-btn--vanilla">$_("Use this image")</button>
+                            </div>
+                        </div>
+                </div>
+            </div>
+        </div>
+    </form>

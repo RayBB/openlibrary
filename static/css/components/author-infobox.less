@@ -45,3 +45,21 @@
   text-align: center;
   margin-bottom: 10px;
 }
+
+.wikidata-image-indicator {
+  text-align: center;
+  font-size: 0.9em;
+  margin-top: 5px;
+  padding: 5px;
+  background-color: @color-light-yellow-background; // Or another suitable highlight color
+  border: 1px solid @color-light-yellow-border; // Or another suitable border color
+  border-radius: 3px;
+
+  a {
+    color: @color-text-default;
+    text-decoration: none;
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}
