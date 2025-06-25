@@ -95,21 +95,15 @@ $if doc.type.key == "/type/edition" and doc.ocaid:
     </form>
 
 $if doc.type.key == "/type/author" and data.get('wikidata_images'):
-    <form class="ol-cover-form ol-cover-form--wikidata" method="post" enctype="multipart/form-data" action="$action">
+    $ img_url = data.get('wikidata_images')[0]
+    <form class="ol-cover-form ol-cover-form--ia" method="post" enctype="multipart/form-data" action="$action">
         <div class="label">
-            <label>$_("Or, use an image from Wikidata")</label>
+            <label>$_("Or, use the the cover from Wikidata")</label>
         </div>
-        <div class="carousel-section">
-            <div id="wikidata-images" class="carousel-container carousel-container-decorated carousel--minimal">
-                <div class="carousel carousel--progressively-enhanced" data-config="$json_encode({'booksPerBreakpoint': [3, 3, 3, 3, 2, 1]})">
-                    $for img_url in data.get('wikidata_images', []):
-                        <div class="book carousel__item">
-                            <div class="book-cover">
-                                <img src="$img_url" width="100" class="bookcover"/>
-                                <button type="submit" name="url" value="$img_url" class="cta-btn cta-btn--vanilla">$_("Use this image")</button>
-                            </div>
-                        </div>
-                </div>
-            </div>
+        <div class="input">
+            <a href="$img_url" target="_blank">
+                <img class="ol-cover-form--ia_image" src="$img_url" style="height: 200px" />
+            </a>
+            <button type="submit" id="coverIA" class="cta-btn cta-btn--vanilla" name="url" value="$img_url">$_("Upload Image")</button>
         </div>
     </form>

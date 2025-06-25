@@ -5528,6 +5528,10 @@ msgstr ""
 msgid "Or, use the the cover from Internet Archive"
 msgstr ""
 
+#: covers/add.html
+msgid "Or, use the the cover from Wikidata"
+msgstr ""
+
 #: covers/author_photo.html
 msgid "Pull up a larger author photo"
 msgstr ""
@@ -5544,6 +5548,14 @@ msgstr ""
 #: covers/author_photo.html
 #, python-format
 msgid "We need a photo of %(author)s"
+msgstr ""
+
+#: covers/author_photo.html
+msgid "Add a photo for this author. Images available from Wikidata."
+msgstr ""
+
+#: covers/author_photo.html
+msgid "Image available from Wikidata"
 msgstr ""
 
 #: covers/book_cover.html

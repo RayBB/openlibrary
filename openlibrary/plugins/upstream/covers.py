@@ -147,21 +147,18 @@ class add_work_cover(add_cover):
             return add_cover.upload(self, key, i)
 
 
-from openlibrary.core import wikidata
-
-
 class add_photo(add_cover):
     path = r"(/authors/OL\d+A)/add-photo"
     cover_category = "a"
 
     def GET(self, key):
         author = web.ctx.site.get(key)
-        wikidata_images = []
-        if author and author.wikidata:
-            entity = wikidata.get_wikidata_entity(author.wikidata, fetch_missing=True)
-            if entity:
-                wikidata_images = entity.get_image_urls()
-        return render_template('covers/add', author, {'wikidata_images': wikidata_images})
+        wikidata_images = (
+            author.wikidata().get_image_urls() if author and author.wikidata() else []
+        )
+        return render_template(
+            'covers/add', author, {'wikidata_images': wikidata_images}
+        )
 
     def save(self, author, photoid, url=None):
         author.photos = [photoid] + [photo.id for photo in author.get_photos()]
