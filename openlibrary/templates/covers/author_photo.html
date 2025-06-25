@@ -28,11 +28,5 @@ $else:
     <div class="author coverMagic">
         <div class="SRPCover bookCover">
             <img src="/images/icons/avatar_author-lg.png" class="cover" alt="$_('We need a photo of %(author)s', author=author.name)"/>
-            $if author.show_wikidata_image_indicator():
-                <div class="wikidata-image-indicator">
-                    <a href="$author.url()/add-photo" title="$_('Add a photo for this author. Images available from Wikidata.')">
-                        $_('Image available from Wikidata')
-                    </a>
-                </div>
         </div>
     </div>
