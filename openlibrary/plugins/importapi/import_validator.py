@@ -35,25 +35,31 @@ class CompleteBook(BaseModel):
     publishers: NonEmptyList[NonEmptyStr]
     publish_date: NonEmptyStr
 
-    @root_validator(pre=True)
-    def remove_invalid_dates(cls, values):
+    @model_validator(mode='before')
+    @classmethod
+    def remove_invalid_dates(cls, data: Any) -> Any:
         """Remove known bad dates prior to validation."""
+        if not isinstance(data, dict):
+            return data
         is_exempt = any(
             source_record.split(":")[0] in SUSPECT_DATE_EXEMPT_SOURCES
-            for source_record in values.get("source_records", [])
+            for source_record in data.get("source_records", [])
         )
         if is_exempt:
-            return values
+            return data
 
-        if values.get("publish_date") in SUSPECT_PUBLICATION_DATES:
-            values.pop("publish_date")
+        if data.get("publish_date") in SUSPECT_PUBLICATION_DATES:
+            data.pop("publish_date")
 
-        return values
+        return data
 
-    @root_validator(pre=True)
-    def remove_invalid_authors(cls, values):
+    @model_validator(mode='before')
+    @classmethod
+    def remove_invalid_authors(cls, data: Any) -> Any:
         """Remove known bad authors (e.g. an author of "N/A") prior to validation."""
-        authors = values.get("authors", [])
+        if not isinstance(data, dict):
+            return data
+        authors = data.get("authors", [])
 
         # Only examine facially valid records. Other rules will handle validating the schema.
         maybe_valid_authors = [
@@ -63,9 +69,9 @@ class CompleteBook(BaseModel):
             and isinstance(author.get("name"), str)
             and author["name"].lower() not in SUSPECT_AUTHOR_NAMES
         ]
-        values["authors"] = maybe_valid_authors
+        data["authors"] = maybe_valid_authors
 
-        return values
+        return data
 
 
 class StrongIdentifierBook(BaseModel):
