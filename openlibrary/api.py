@@ -38,11 +38,18 @@ class OLError(Exception):
 
 
 class OpenLibrary:
-    def __init__(self, base_url="https://openlibrary.org"):
+    def __init__(self, base_url: str | None = "https://openlibrary.org"):
         self.base_url = base_url.rstrip('/') if base_url else "https://openlibrary.org"
-        self.cookie = None
+        self.cookie: str | None = None
 
-    def _request(self, path, method='GET', data=None, headers=None, params=None):
+    def _request(
+        self,
+        path: str,
+        method: str = 'GET',
+        data: dict | str | None = None,
+        headers: dict | None = None,
+        params: dict | None = None,
+    ):
         logger.info("%s %s", method, path)
         url = self.base_url + path
         headers = headers or {}
@@ -59,7 +66,7 @@ class OpenLibrary:
         except requests.HTTPError as e:
             raise OLError(e)
 
-    def autologin(self, section=None):
+    def autologin(self, section: str | None = None):
         """Login to Open Library with credentials taken from ~/.olrc file.
 
         The ~/.olrc file must be in ini format (format readable by
@@ -93,7 +100,7 @@ class OpenLibrary:
         password = config.get(section, 'password')
         return self.login(username, password)
 
-    def login(self, username, password):
+    def login(self, username: str, password: str):
         """Login to Open Library with given credentials."""
         headers = {'Content-Type': 'application/json'}
         try:
@@ -108,11 +115,11 @@ class OpenLibrary:
             cookies = response.headers['Set-Cookie'].split(',')
             self.cookie = ';'.join([c.split(';')[0] for c in cookies])
 
-    def get(self, key, v=None):
+    def get(self, key: str, v: str | None = None):
         response = self._request(key + '.json', params={'v': v} if v else {})
         return unmarshal(response.json())
 
-    def get_many(self, keys):
+    def get_many(self, keys: list[str]):
         """Get multiple documents in a single request as a dictionary."""
         if len(keys) > 100:
             # Process in batches to avoid crossing the URL length limit.
@@ -123,20 +130,22 @@ class OpenLibrary:
         else:
             return self._get_many(keys)
 
-    def _get_many(self, keys):
+    def _get_many(self, keys: list[str]):
         response = self._request("/api/get_many", params={"keys": json.dumps(keys)})
         return response.json()['result']
 
-    def save(self, key, data, comment=None):
+    def save(self, key: str, data: dict, comment: str | None = None):
         headers = {'Content-Type': 'application/json'}
-        data = marshal(data)
+        marshalled_data = marshal(data)
         if comment:
             headers['Opt'] = '"%s/dev/docs/api"; ns=42' % self.base_url
             headers['42-comment'] = comment
-        data = json.dumps(data)
-        return self._request(key, method="PUT", data=data, headers=headers).content
+        json_data = json.dumps(marshalled_data)
+        return self._request(key, method="PUT", data=json_data, headers=headers).content
 
-    def _call_write(self, name, query, comment, action):
+    def _call_write(
+        self, name: str, query: dict, comment: str | None, action: str | None
+    ):
         headers = {'Content-Type': 'application/json'}
         query = marshal(query)
 
@@ -160,10 +169,10 @@ class OpenLibrary:
         """Internal write API."""
         return self._call_write('write', query, comment, action)
 
-    def new(self, query, comment=None, action=None):
+    def new(self, query, comment=None, action=None):  # TODO: Type for query
         return self._call_write('new', query, comment, action)
 
-    def query(self, q=None, **kw):
+    def query(self, q=None, **kw):  # TODO: Type for q and kw
         """Query Open Library.
 
         Open Library always limits the result to 1000 items due to
@@ -200,7 +209,13 @@ class OpenLibrary:
             response = self._request("/query.json", params={"query": json.dumps(q)})
             return unmarshal(response.json())
 
-    def search(self, query, limit=10, offset=0, fields: list[str] | None = None):
+    def search(
+        self,
+        query: str,
+        limit: int = 10,
+        offset: int = 0,
+        fields: list[str] | None = None,
+    ):
         return self._request(
             '/search.json',
             params={
@@ -211,18 +226,18 @@ class OpenLibrary:
             },
         ).json()
 
-    def import_ocaid(self, ocaid, require_marc=True):
+    def import_ocaid(self, ocaid: str, require_marc: bool = True):
         data = {
             'identifier': ocaid,
             'require_marc': 'true' if require_marc else 'false',
         }
         return self._request('/api/import/ia', method='POST', data=data).text
 
-    def import_data(self, data):
+    def import_data(self, data: str):
         return self._request('/api/import', method='POST', data=data).text
 
 
-def marshal(data):
+def marshal(data):  # TODO: type for data
     """Serializes the specified data in the format required by OL.::
 
     >>> marshal(datetime.datetime(2009, 1, 2, 3, 4, 5, 6789))
@@ -242,7 +257,7 @@ def marshal(data):
         return data
 
 
-def unmarshal(d):
+def unmarshal(d):  # TODO: type for d
     """Converts OL serialized objects to python.::
 
     >>> unmarshal({"type": "/type/text",
@@ -269,7 +284,7 @@ def unmarshal(d):
         return d
 
 
-def parse_datetime(value):
+def parse_datetime(value: str | datetime.datetime):
     """Parses ISO datetime formatted string.::
 
     >>> parse_datetime("2009-01-02T03:04:05.006789")
@@ -279,7 +294,18 @@ def parse_datetime(value):
         return value
     else:
         tokens = re.split(r'-|T|:|\.| ', value)
-        return datetime.datetime(*map(int, tokens))
+        tokens_int = [int(t) for t in tokens]
+        # year, month, day, hour=0, minute=0, second=0, microsecond=0
+        dt_args = tokens_int + [0] * (7 - len(tokens_int))
+        return datetime.datetime(
+            dt_args[0],
+            dt_args[1],
+            dt_args[2],
+            dt_args[3],
+            dt_args[4],
+            dt_args[5],
+            dt_args[6],
+        )
 
 
 class Text(str):
