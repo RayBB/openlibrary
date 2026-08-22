@@ -32,18 +32,17 @@ pub fn normalize_subject_name(name: &str) -> String {
         .collect()
 }
 
+static RE_SUBJECT: once_cell::sync::Lazy<regex::Regex> =
+    once_cell::sync::Lazy::new(|| regex::Regex::new(r"[, _]+").unwrap());
+
 pub fn subject_name_to_key(subject_type: &str, name: &str) -> String {
     let mut prefix = String::from("/subjects/");
     if subject_type != "subject" {
         prefix.push_str(subject_type);
         prefix.push(':');
     }
-    // re_subject = re.compile("[, _]+")  replace with _
-    let re = once_cell::sync::Lazy::<regex::Regex>::new(|| {
-        regex::Regex::new(r"[, _]+").unwrap()
-    });
     let lower = name.to_lowercase();
-    let replaced = re.replace_all(&lower, "_");
+    let replaced = RE_SUBJECT.replace_all(&lower, "_");
     let trimmed = replaced.trim_matches('_').to_string();
     prefix + &trimmed
 }

@@ -68,3 +68,14 @@ Full `doc_json` still omits `editions` nested, `by_statement`, `number_of_pages_
 2. Fix LCC tie determinism (sort before max) if strict byte parity needed.
 3. Add `cargo test` fixtures from Python `test_ddc.py`/`test_lcc.py` + golden 10-work JSON.
 4. Solr loading deferred (`mvp_load.py:24` `commitWithin=60000`).
+
+---
+
+## Note — Single Arrow Scan was not built
+
+`Fix 6` as specced — one `parquet::arrow::ParquetRecordBatchReader` streaming `bronze`+`silver` once and joining in Rust — was **not implemented**. Instead `prep` was cut by bucketing both sides by numeric `OLID//100000` (`mvp_partition_works.py:1` + duckdb bucketed-silver compaction):
+
+*   `lake/silver/works_b/bucket=N/data.parquet` (`346` buckets, `718M`) + `lake/silver/editions_bucketed/bucket=N/data.parquet` (`459` buckets, `4.1G`) each compacted to one file/bucket (`id` BIGINT column).
+*   Chunk manifests `lake/silver/chunks_{10000,20000}.json` (numeric-OLID windows, `1441`/`721` chunks, `2.1s` warm build) let every call read only its `lo/100000..hi/100000` dirs (`query.rs:12` `bucket_paths()` + `WHERE id BETWEEN lo AND hi`) — the same pruning a true single scan would give, without rewriting the whole pipeline to Arrow.
+
+Result: `prep 10.11s→1.4s` for typical sparse chunks (`10k` legacy `10.39s` → `2.30s`), `100k` (`5×20k` `Key>` paginate) `≈12s` (`5×2.4s avg`), full `14.4M` (`721×20k`) **`~24-29 min` wall** (`build ~0.6s`/`20k avg`) vs `mvp_gold_DC.py:15` `19.17s/10k` `→7.67h` idle (`43.98s` loaded `→17.6h`). A true single streaming pass (`Fix 6`) would shave only another `~1s prep/chunk` (DuckDB file-open overhead remains) — we left it for next handoff. Keep the bucketed `lake` as the contract; a pure Arrow scan can swap `query.rs:12` later without changing manifests or outputs.

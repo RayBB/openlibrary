@@ -8,6 +8,17 @@ use crate::helpers::{
     lcc::{choose_sorting_lcc, short_lcc_to_sortable_lcc},
     sort_title::sort_title,
 };
+use once_cell::sync::Lazy;
+
+static RE_YEAR: Lazy<regex::Regex> = Lazy::new(|| regex::Regex::new(r"\b(\d{4})\b").unwrap());
+static RE_LANG_KEY: Lazy<regex::Regex> =
+    Lazy::new(|| regex::Regex::new(r"^/(?:l|languages)/([a-z]{3})$").unwrap());
+static RE_AUTHOR_KEY: Lazy<regex::Regex> =
+    Lazy::new(|| regex::Regex::new(r"^/(?:a|authors)/(OL\d+A)").unwrap());
+static RE_SOLR_FIELD: Lazy<regex::Regex> = Lazy::new(|| regex::Regex::new(r"^[-\w]+$").unwrap());
+static RE_DDC_SMALL: Lazy<regex::Regex> = Lazy::new(|| regex::Regex::new(r"^0?\d{1,2}$").unwrap());
+static RE_SOLR_ESCAPE: Lazy<regex::Regex> =
+    Lazy::new(|| regex::Regex::new(r#"([\s\-+!()|&{}\[\]^"~*?:\\])"#).unwrap());
 
 fn get_str(v: &Value, key: &str) -> Option<String> {
     v.get(key).and_then(|x| x.as_str()).map(|s| s.to_string())
@@ -36,15 +47,14 @@ fn uniq_strings(vals: Vec<String>) -> Vec<String> {
 }
 
 fn extract_year(publish_date: &str) -> Option<i64> {
-    let re = regex::Regex::new(r"\b(\d{4})\b").unwrap();
-    re.captures(publish_date)
+    RE_YEAR
+        .captures(publish_date)
         .and_then(|c| c.get(1))
         .and_then(|m| m.as_str().parse().ok())
 }
 
 fn solr_escape(query: &str) -> String {
-    let re = regex::Regex::new(r#"([\s\-+!()|&{}\[\]^"~*?:\\])"#).unwrap();
-    re.replace_all(query, r"\$1").to_string()
+    RE_SOLR_ESCAPE.replace_all(query, r"\$1").to_string()
 }
 
 // Edition builder helpers
@@ -93,7 +103,6 @@ fn edition_publishers(ed: &Value) -> Vec<String> {
 }
 
 fn edition_languages(ed: &Value) -> Vec<String> {
-    let re = regex::Regex::new(r"^/(?:l|languages)/([a-z]{3})$").unwrap();
     let mut out = Vec::new();
     if let Some(arr) = ed.get("languages").and_then(|v| v.as_array()) {
         for lang in arr {
@@ -104,7 +113,7 @@ fn edition_languages(ed: &Value) -> Vec<String> {
             } else {
                 String::new()
             };
-            if let Some(caps) = re.captures(&key) {
+            if let Some(caps) = RE_LANG_KEY.captures(&key) {
                 out.push(caps.get(1).unwrap().as_str().to_string());
             }
         }
@@ -132,8 +141,10 @@ pub fn build_solr_doc(
     // author fields
     let author_key: Vec<String> = authors.iter().filter_map(|a| {
         let k = a.get("key")?.as_str()?;
-        let re = regex::Regex::new(r"^/(?:a|authors)/(OL\d+A)").unwrap();
-        re.captures(k).and_then(|c| c.get(1)).map(|m| m.as_str().to_string())
+        RE_AUTHOR_KEY
+            .captures(k)
+            .and_then(|c| c.get(1))
+            .map(|m| m.as_str().to_string())
     }).collect();
     let author_name: Vec<String> = authors.iter().map(|a| a.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string()).collect();
     let author_facet: Vec<String> = author_key.iter().zip(author_name.iter()).map(|(k,n)| format!("{} {}", k, n)).collect();
@@ -419,12 +430,12 @@ pub fn build_solr_doc(
     {
         use std::collections::HashMap;
         let mut identifiers: HashMap<String, Vec<String>> = HashMap::new();
-        let re_solr_field = regex::Regex::new(r"^[-\w]+$").unwrap();
+        // RE_SOLR_FIELD is static above
         for ed in editions {
             if let Some(id_map) = ed.get("identifiers").and_then(|v| v.as_object()) {
                 for (key, val) in id_map {
                     let mut solr_key = key.replace(".", "_").replace(",", "_").replace("(", "").replace(")", "").replace(":", "_").replace("/", "").replace("#", "").to_lowercase();
-                    if !re_solr_field.is_match(&solr_key) { continue; }
+                    if !RE_SOLR_FIELD.is_match(&solr_key) { continue; }
                     if let Some(arr) = val.as_array() {
                         // Python: uniq(v.strip() for v in id_list if v)  -> checks original truthiness before strip
                         let vals: Vec<String> = arr.iter().filter_map(|v| v.as_str()).filter(|s| !s.is_empty()).map(|s| s.trim().to_string()).collect();

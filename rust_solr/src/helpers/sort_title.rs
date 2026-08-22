@@ -1,9 +1,9 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-static ARTICLE_PATTERN: Lazy<Regex> = Lazy::new(|| {
+static RE_SORT_TITLE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
-        r"^(an? |the |l[aeo]s? |l'|de la |el |il |un[ae]? |du |de[imrst]? |das |ein |eine[mnrs]? |bir )(.*)",
+        r"(?i)^(an? |the |l[aeo]s? |l'|de la |el |il |un[ae]? |du |de[imrst]? |das |ein |eine[mnrs]? |bir )(.*)",
     )
     .unwrap()
 });
@@ -15,16 +15,7 @@ pub fn sort_title(title: &str, subtitle: Option<&str>) -> String {
             full = format!("{}: {}", full, sub);
         }
     }
-    let lower = full.to_lowercase();
-    // need case-insensitive match but preserve original case for output? Python uses re.IGNORECASE but returns original case groups.
-    // Use regex with (?i)
-    static RE_I: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(
-            r"(?i)^(an? |the |l[aeo]s? |l'|de la |el |il |un[ae]? |du |de[imrst]? |das |ein |eine[mnrs]? |bir )(.*)",
-        )
-        .unwrap()
-    });
-    if let Some(caps) = RE_I.captures(&full) {
+    if let Some(caps) = RE_SORT_TITLE.captures(&full) {
         let article = caps.get(1).unwrap().as_str().trim().to_string();
         let rest = caps.get(2).unwrap().as_str().to_string();
         return format!("{}, {}", rest, article);

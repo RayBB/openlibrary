@@ -22,6 +22,7 @@ static DDC_RE: Lazy<Regex> = Lazy::new(|| {
     .unwrap()
 });
 
+static RE_DDC_SMALL: Lazy<Regex> = Lazy::new(|| Regex::new(r"^0?\d{1,2}$").unwrap());
 static VALID_CHARS_SET: Lazy<std::collections::HashSet<char>> = Lazy::new(|| {
     let printable: String = (32u8..=126).map(|c| c as char).collect();
     let drop = "/'′',"; // includes ’ and ,
@@ -155,8 +156,7 @@ pub fn normalize_ddc(ddc: &str) -> Vec<String> {
             number_str = format!("{:03}{}", int_val, decimal);
             // discard catalog edition number: if results not empty and number matches ^0?\d{1,2}$
             if !results.is_empty() {
-                let re_small = Regex::new(r"^0?\d{1,2}$").unwrap();
-                if re_small.is_match(number) {
+                if RE_DDC_SMALL.is_match(number) {
                     continue;
                 }
             }
