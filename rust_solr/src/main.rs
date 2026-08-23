@@ -29,6 +29,9 @@ struct Args {
     chunks: Option<String>,
     #[arg(long, default_value = "0")]
     chunk_index: usize,
+    /// Output format: parquet (default) or ndjson (one JSON doc per line, for Solr /update/json/docs)
+    #[arg(long, default_value = "parquet")]
+    format: String,
 }
 
 fn main() -> Result<()> {
@@ -96,7 +99,10 @@ fn main() -> Result<()> {
     eprintln!("Transform {} docs build {:.2}s {:.1} docs/s", docs.len(), build, docs.len() as f64 / build.max(0.001));
 
     let t2 = std::time::Instant::now();
-    parquet::write_gold(&docs, &args.out)?;
+    match args.format.as_str() {
+        "ndjson" => parquet::write_ndjson(&docs, &args.out)?,
+        _ => parquet::write_gold(&docs, &args.out)?,
+    }
     let write_t = t2.elapsed().as_secs_f64();
     let total = t0.elapsed().as_secs_f64();
     eprintln!("Wrote {} to {} in {:.2}s total {:.2}s (prep {:.2}s + build {:.2}s)", docs.len(), args.out, write_t, total, prep, build);

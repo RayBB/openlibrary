@@ -78,7 +78,12 @@ pub fn short_lcc_to_sortable_lcc(lcc: &str) -> Option<String> {
 }
 
 pub fn sortable_lcc_to_short_lcc(lcc: &str) -> String {
-    let caps = LCC_PARTS_RE.captures(lcc).expect("Unable to parse LCC");
+    let caps = match LCC_PARTS_RE.captures(lcc) {
+        Some(c) => c,
+        // Unparseable (e.g. cutter like ".2" breaks round-trip). Python asserts here;
+        // fall back to the input instead of panicking the whole chunk.
+        None => return lcc.to_string(),
+    };
     let letters_raw = caps.name("letters").unwrap().as_str();
     let letters = letters_raw.trim_end_matches('-').to_string();
     let number_raw = caps.name("number").map(|m| m.as_str()).unwrap_or("");

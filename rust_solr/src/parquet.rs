@@ -52,3 +52,26 @@ pub fn write_gold(docs: &[serde_json::Value], out_path: &str) -> Result<()> {
     writer.close()?;
     Ok(())
 }
+
+/// Write one JSON document per line (Solr NDJSON streaming format for /update/json/docs).
+pub fn write_ndjson(docs: &[serde_json::Value], out_path: &str) -> Result<()> {
+    use rayon::prelude::*;
+    use std::io::{BufWriter, Write};
+
+    let file = File::create(out_path)?;
+    let mut writer = BufWriter::with_capacity(8 << 20, file);
+
+    // Parallel-serialize in chunks, then write sequentially to keep line order stable.
+    for chunk in docs.chunks(10000) {
+        let lines: Vec<String> = chunk
+            .par_iter()
+            .map(|d| serde_json::to_string(d).unwrap())
+            .collect();
+        for line in &lines {
+            writer.write_all(line.as_bytes())?;
+            writer.write_all(b"\n")?;
+        }
+    }
+    writer.flush()?;
+    Ok(())
+}
