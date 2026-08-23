@@ -1,6 +1,9 @@
 # Handoff — Rust Transform for Gold
 
 **Date:** 2026-08-22  
+
+> ⚠️ **OBSOLETE NUMBERS:** this run used a bad dump (January-2024 snapshot mislabeled `ol_dump_2026-07-31.txt.gz`). The real full pipeline lives at `/mnt/HC_Volume_106672133/openlibrary/lake_full/` — see `docs/ai/solr/index.md` ("Dump mixup incident"). Repo `lake/` paths below have been deleted.
+
 **Goal:** 10k `START_AT=/works/OL1W` → `8984` isolated (prod `8983` untouched), skip IA, prove `dump → Solr` without PG.
 
 ## Where we are (fast path kept: D+C)

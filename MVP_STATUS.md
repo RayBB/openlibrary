@@ -1,5 +1,7 @@
 # MVP Status — 2026-08-22
 
+> ⚠️ **OBSOLETE NUMBERS:** this run used a bad dump (a 7.1 GB January-2024 snapshot mislabeled `ol_dump_2026-07-31.txt.gz`). Works/editions were later rebuilt from the real 18 GB dump into `/mnt/HC_Volume_106672133/openlibrary/lake_full/` — see `docs/ai/solr/index.md` ("Dump mixup incident"). The repo `lake/` tree referenced below has been deleted.
+
 **Goal:** 10k works `START_AT=/works/OL1W` → Solr `8984` isolated (prod `8983` untouched), skip IA `data_provider.py:238`.
 
 ## Where we are

@@ -7,14 +7,14 @@ Keeps DuckDB for queries (silver `work_key` 21× win `mvp_silver_py.py:1`), Rust
 ```bash
 cargo build --release  # ~5s incremental, 1.5m cold (libduckdb-sys bundled)
 ./target/release/rust_solr --limit 10 --out /tmp/rust_10.parquet \
-  --bronze-works /root/openlibrary/lake/bronze/works.parquet \
-  --silver-editions /root/openlibrary/lake/silver/editions.parquet \
-  --bronze-authors /root/openlibrary/lake/bronze/authors.parquet
+  --bronze-works /mnt/HC_Volume_106672133/openlibrary/lake_full/bronze/works.parquet \
+  --silver-editions /mnt/HC_Volume_106672133/openlibrary/lake_full/silver/editions.parquet \
+  --bronze-authors /mnt/HC_Volume_106672133/openlibrary/lake_full/bronze/authors.parquet
 
 # 100/1000/10000
-./target/release/rust_solr --limit 100 --out lake/gold/rust_100.parquet --bronze-works lake/bronze/works.parquet --silver-editions lake/silver/editions.parquet --bronze-authors lake/bronze/authors.parquet
-./target/release/rust_solr --limit 1000 --out lake/gold/rust_1000.parquet --bronze-works lake/bronze/works.parquet --silver-editions lake/silver/editions.parquet --bronze-authors lake/bronze/authors.parquet
-./target/release/rust_solr --limit 10000 --out lake/gold/rust_10k.parquet --bronze-works lake/bronze/works.parquet --silver-editions lake/silver/editions.parquet --bronze-authors lake/bronze/authors.parquet
+./target/release/rust_solr --limit 100 --out lake_full/gold/rust_100.parquet --bronze-works lake_full/bronze/works.parquet --silver-editions lake_full/silver/editions.parquet --bronze-authors lake_full/bronze/authors.parquet
+./target/release/rust_solr --limit 1000 --out lake_full/gold/rust_1000.parquet --bronze-works lake_full/bronze/works.parquet --silver-editions lake_full/silver/editions.parquet --bronze-authors lake_full/bronze/authors.parquet
+./target/release/rust_solr --limit 10000 --out lake_full/gold/rust_10k.parquet --bronze-works lake_full/bronze/works.parquet --silver-editions lake_full/silver/editions.parquet --bronze-authors lake_full/bronze/authors.parquet
 ```
 
 Works must be run from repo root OR pass absolute paths (binary runs with `Connection::open_in_memory`, so paths are passed to DuckDB SQL).
@@ -75,7 +75,7 @@ Full `doc_json` still omits `editions` nested, `by_statement`, `number_of_pages_
 
 `Fix 6` as specced — one `parquet::arrow::ParquetRecordBatchReader` streaming `bronze`+`silver` once and joining in Rust — was **not implemented**. Instead `prep` was cut by bucketing both sides by numeric `OLID//100000` (`mvp_partition_works.py:1` + duckdb bucketed-silver compaction):
 
-*   `lake/silver/works_b/bucket=N/data.parquet` (`346` buckets, `718M`) + `lake/silver/editions_bucketed/bucket=N/data.parquet` (`459` buckets, `4.1G`) each compacted to one file/bucket (`id` BIGINT column).
-*   Chunk manifests `lake/silver/chunks_{10000,20000}.json` (numeric-OLID windows, `1441`/`721` chunks, `2.1s` warm build) let every call read only its `lo/100000..hi/100000` dirs (`query.rs:12` `bucket_paths()` + `WHERE id BETWEEN lo AND hi`) — the same pruning a true single scan would give, without rewriting the whole pipeline to Arrow.
+*   `lake_full/silver/works_b/bucket=N/data.parquet` (`346` buckets, `718M`) + `lake_full/silver/editions_bucketed/bucket=N/data.parquet` (`459` buckets, `4.1G`) each compacted to one file/bucket (`id` BIGINT column).
+*   Chunk manifests `lake_full/silver/chunks_{10000,20000}.json` (numeric-OLID windows, `1441`/`721` chunks, `2.1s` warm build) let every call read only its `lo/100000..hi/100000` dirs (`query.rs:12` `bucket_paths()` + `WHERE id BETWEEN lo AND hi`) — the same pruning a true single scan would give, without rewriting the whole pipeline to Arrow.
 
 Result: `prep 10.11s→1.4s` for typical sparse chunks (`10k` legacy `10.39s` → `2.30s`), `100k` (`5×20k` `Key>` paginate) `≈12s` (`5×2.4s avg`), full `14.4M` (`721×20k`) **`~24-29 min` wall** (`build ~0.6s`/`20k avg`) vs `mvp_gold_DC.py:15` `19.17s/10k` `→7.67h` idle (`43.98s` loaded `→17.6h`). A true single streaming pass (`Fix 6`) would shave only another `~1s prep/chunk` (DuckDB file-open overhead remains) — we left it for next handoff. Keep the bucketed `lake` as the contract; a pure Arrow scan can swap `query.rs:12` later without changing manifests or outputs.

@@ -1,5 +1,7 @@
 # Handoff — Build the full Gold → verify → fast-load into a fresh Solr
 
+> ⚠️ **SUPERSEDED PATHS:** the `lake/` tree below was built from a bad dump (January-2024 snapshot mislabeled `ol_dump_2026-07-31.txt.gz`) and has been deleted. The completed full pipeline lives at `/mnt/HC_Volume_106672133/openlibrary/lake_full/` (41.5M works / 56.6M editions / 15.4M authors). See `docs/ai/solr/index.md` ("Dump mixup incident"). Numbers below reflect the bad-dump run and are kept for history only.
+
 **Status before you:** DuckDB → Rust Gold is working and benchmarked.
 
 *   `mvp_partition_works.py:1` + bucketing gave `lake/silver/works_b/bucket=N/data.parquet` (`346` buckets, `718M` incl. `id` BIGINT) + `lake/silver/editions_bucketed/bucket=N/data.parquet` (`459` buckets, `4.1G`) — one-time ~`81s+149s`.
