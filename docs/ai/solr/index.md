@@ -445,16 +445,21 @@ curl "http://localhost:8985/solr/openlibrary/select?q=mark&fq=type:author&rows=3
 
 **Ratings / ReadingLog are also dropped at Gold** — `WorkSolrBuilder:582,586` `ratings_average/ratings_sortable/ratings_count{1..5}` (`openlibrary/core/ratings.py:126` `work_ratings_summary_from_counts`) + `readinglog_count/want_to_read_count/...` (`openlibrary/core/bookshelves.py:687` `get_work_summary`) need `postgres` `ratings` (`838k rows` `495k works`) + `bookshelves_books` (`12.5M rows` `3.18M works`) via `solr_duckdb/parquet/ratings.parquet:5.1M` + `reading_log.parquet:55M`. Not in `lake/bronze` dumps.
 
-**Fix — atomic `{"set":}` updates without rebuilding Gold** (`mvp_ratings_to_solr.py`, same raw `VARCHAR` `->` `8985` pattern as `mvp_authors_to_solr.py`, `httpx.Client`):
+**Fix — atomic `{"set":}` updates without rebuilding Gold** (`mvp_ratings_to_solr.py`, `httpx.AsyncClient` `concurrency 8` default, `bench 8` optimal on `4c` `103M`):
 ```bash
-# from solr_duckdb/parquet (already zstd) — no postgres needed, ~2-3min
-.venv/bin/python mvp_ratings_to_solr.py --ratings /root/solr_duckdb/parquet/ratings.parquet --reading-log /root/solr_duckdb/parquet/reading_log.parquet --solr http://localhost:8985/solr/openlibrary --batch 10000
+# from solr_duckdb/parquet (already zstd) — no postgres needed, bench 50k: ratings 41.9s->31.9s 24% win, readingLog 77.9s->21.3s 3.6× win at conc8
+# single 1: ~90min (ratings 25min + readingLog 66min) -> conc8 ~28min (5min + 22min + commit 25s)
+.venv/bin/python mvp_ratings_to_solr.py --solr http://localhost:8985/solr/openlibrary --batch 10000 --concurrency 8
+# sweep 1,2,4,8,16 on 50k sample: --bench --limit 50000 --batch 10000 (ratings) / readingLog
+.venv/bin/python mvp_ratings_to_solr.py --bench --limit 50000 --batch 10000 --no-commit
+# from solr_duckdb/parquet explicitly:
+.venv/bin/python mvp_ratings_to_solr.py --ratings /root/solr_duckdb/parquet/ratings.parquet --reading-log /root/solr_duckdb/parquet/reading_log.parquet --solr http://localhost:8985/solr/openlibrary --batch 10000 --concurrency 8
 # verify
 curl "http://localhost:8985/solr/openlibrary/select?q=ratings_average:*&rows=0" # -> 495805
 curl "http://localhost:8985/solr/openlibrary/select?q=readinglog_count:*&rows=0" # -> 3188995
 curl "http://localhost:8985/solr/openlibrary/select?q=type:work&rows=5&fl=key,ratings_average,readinglog_count&sort=ratings_sortable+desc" | python3 -m json.tool
 ```
-Only works with `ratings>0` `~0.5M` `50 batches` + readingLog `~3.2M` `318 batches` `*0.33s` `~2min` `+ commit 25s` vs `Gold` rebuild `~5h`. `duckdb` direct read of `parquet` `~0.5s` vs `psql COPY GROUP BY` `~5s`; reading raw `ol_dump*.gz` `563s` would be `~10×` slower.
+Only works with `ratings>0` `~0.5M` `50 batches` + readingLog `~3.2M` `318 batches` `*0.33s single` `~2min` `+ commit 25s` vs `Gold` rebuild `~5h`; `conc8` `~28min` on `4c` `4g` `ramBuffer 512` `autoSoftCommit -1` `compose.rust_full.yaml:1`. `duckdb` direct `parquet` `~0.5s` vs `psql COPY GROUP BY` `~5s`; `ol_dump*.gz` `563s` `~10×` slower.
 
 ## Public Documentation
 
