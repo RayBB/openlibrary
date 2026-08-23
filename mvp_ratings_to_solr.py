@@ -104,7 +104,7 @@ def main():  # noqa: PLR0915
     ap.add_argument("--no-commit", action="store_true")
     ap.add_argument("--skip-ratings", action="store_true")
     ap.add_argument("--skip-reading-log", action="store_true")
-    ap.add_argument("--concurrency", type=int, default=1, help="concurrent POSTs (1=sync, >1=async)")
+    ap.add_argument("--concurrency", type=int, default=8, help="concurrent POSTs (1=sync, >1=async) bench 8 optimal on 4c")
     ap.add_argument("--bench", action="store_true", help="sweep concurrency 1,2,4,8,16 on --limit sample")
     args = ap.parse_args()
 
