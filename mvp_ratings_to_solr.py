@@ -14,7 +14,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import asyncio
+import json as _json
 import math
+import subprocess
+import sys
 import time
 
 import duckdb
@@ -52,6 +56,43 @@ def work_ratings_summary(counts: list[int]) -> dict:
     }
 
 
+async def post_batches_async(batches: list[list[dict]], update_url: str, concurrency: int) -> tuple[int, float]:
+    sem = asyncio.Semaphore(concurrency)
+    headers = {"Content-Type": "application/json"}
+    t0 = time.time()
+    async with httpx.AsyncClient(timeout=60.0) as client:
+
+        async def _post(batch: list[dict]) -> None:
+            async with sem:
+                payload = _json.dumps(batch).encode()
+                res = await client.post(
+                    f"{update_url}?commitWithin=60000",
+                    content=payload,
+                    headers=headers,
+                    params={"commitWithin": "60000"},
+                )
+                res.raise_for_status()
+
+        await asyncio.gather(*[_post(b) for b in batches])
+    return len(batches), time.time() - t0
+
+
+def post_batches_sync(batches: list[list[dict]], update_url: str) -> tuple[int, float]:
+    headers = {"Content-Type": "application/json"}
+    t0 = time.time()
+    with httpx.Client(timeout=60.0) as client:
+        for b in batches:
+            payload = _json.dumps(b).encode()
+            res = client.post(
+                f"{update_url}?commitWithin=60000",
+                content=payload,
+                headers=headers,
+                params={"commitWithin": "60000"},
+            )
+            res.raise_for_status()
+    return len(batches), time.time() - t0
+
+
 def main():  # noqa: PLR0915
     ap = argparse.ArgumentParser()
     ap.add_argument("--ratings", default="/root/solr_duckdb/parquet/ratings.parquet")
@@ -63,13 +104,51 @@ def main():  # noqa: PLR0915
     ap.add_argument("--no-commit", action="store_true")
     ap.add_argument("--skip-ratings", action="store_true")
     ap.add_argument("--skip-reading-log", action="store_true")
+    ap.add_argument("--concurrency", type=int, default=1, help="concurrent POSTs (1=sync, >1=async)")
+    ap.add_argument("--bench", action="store_true", help="sweep concurrency 1,2,4,8,16 on --limit sample")
     args = ap.parse_args()
 
     solr_base = args.solr.rstrip("/")
     update_url = f"{solr_base}/update"
     limit_sql = f" LIMIT {args.limit}" if args.limit else ""
 
-    print(f"[ratings] ratings={args.ratings} reading_log={args.reading_log} solr={solr_base} batch={args.batch}", flush=True)
+    if args.bench:
+        # bench sweep on sample (default limit 50000 if not set)
+        bench_limit = args.limit or 50000
+        print(f"[bench] sweeping concurrency 1,2,4,8,16 with limit={bench_limit} batch={args.batch}", flush=True)
+        for conc in [1, 2, 4, 8, 16]:
+            print(f"\n[bench] concurrency={conc} ---", flush=True)
+            # run with temp limit via subprocess
+
+            cmd = [
+                sys.executable,
+                __file__,
+                "--ratings",
+                args.ratings,
+                "--reading-log",
+                args.reading_log,
+                "--solr",
+                solr_base,
+                "--batch",
+                str(args.batch),
+                "--limit",
+                str(bench_limit),
+                "--concurrency",
+                str(conc),
+                "--skip-reading-log",
+            ]
+            # skip commit during bench to avoid final commit overhead
+            cmd.append("--no-commit")
+            t_b0 = time.time()
+            subprocess.run(cmd, check=False)
+            print(f"[bench] conc {conc} done in {time.time() - t_b0:.1f}s", flush=True)
+        print("[bench] done — pick best concurrency for full run", flush=True)
+        return
+
+    print(
+        f"[ratings] ratings={args.ratings} reading_log={args.reading_log} solr={solr_base} batch={args.batch} conc={args.concurrency}",
+        flush=True,
+    )
     t0 = time.time()
 
     try:
@@ -104,42 +183,20 @@ def main():  # noqa: PLR0915
                 summ = work_ratings_summary([c1, c2, c3, c4, c5])
                 print(f"{work} {summ}", flush=True)
         else:
-            headers = {"Content-Type": "application/json"}
-            total = 0
-            batches = 0
-            post_t = 0.0
-            with httpx.Client(timeout=60.0) as client:
-                # Build docs in memory then stream batches — rows already aggregated (495k) ~ small
-                docs = []
-                for work, c1, c2, c3, c4, c5 in rows:
-                    summ = work_ratings_summary([c1, c2, c3, c4, c5])
-                    # atomic set — include type for new docs to satisfy required field
-                    doc = {"key": work, "type": {"set": "work"}}
-                    for k, v in summ.items():
-                        doc[k] = {"set": v}
-                    docs.append(doc)
-
-                for i in range(0, len(docs), args.batch):
-                    batch = docs[i : i + args.batch]
-                    payload = __import__("json").dumps(batch).encode()
-                    st = time.time()
-                    res = client.post(
-                        f"{update_url}?commitWithin=60000",
-                        content=payload,
-                        headers=headers,
-                        params={"commitWithin": "60000"},
-                    )
-                    post_t += time.time() - st
-                    try:
-                        res.raise_for_status()
-                    except Exception:
-                        print(f"[ratings batch {batches} failed] {res.status_code} {res.text[:1000]}", flush=True)
-                        raise
-                    total += len(batch)
-                    batches += 1
-                    if batches % 10 == 0:
-                        print(f"[ratings batch {batches}] {len(batch)} -> total {total} avg {post_t / batches:.2f}s", flush=True)
-            print(f"[ratings done] total={total} batches={batches} post_t={post_t:.2f}s", flush=True)
+            docs = []
+            for work, c1, c2, c3, c4, c5 in rows:
+                summ = work_ratings_summary([c1, c2, c3, c4, c5])
+                doc = {"key": work, "type": {"set": "work"}}
+                for k, v in summ.items():
+                    doc[k] = {"set": v}
+                docs.append(doc)
+            batches = [docs[i : i + args.batch] for i in range(0, len(docs), args.batch)]
+            if args.concurrency > 1:
+                print(f"[ratings] posting {len(batches)} batches conc={args.concurrency}...", flush=True)
+                _, post_t = asyncio.run(post_batches_async(batches, update_url, args.concurrency))
+            else:
+                _, post_t = post_batches_sync(batches, update_url)
+            print(f"[ratings done] total={len(docs)} batches={len(batches)} post_t={post_t:.2f}s docs/s={len(docs) / post_t:.1f}", flush=True)
 
     # ---------- Reading Log ----------
     if not args.skip_reading_log:
@@ -163,46 +220,26 @@ def main():  # noqa: PLR0915
                 total = want + curr + already + stopped
                 print(f"{work} want={want} curr={curr} already={already} stopped={stopped} total={total}", flush=True)
         else:
-            headers = {"Content-Type": "application/json"}
-            total = 0
-            batches = 0
-            post_t = 0.0
-            with httpx.Client(timeout=60.0) as client:
-                docs = []
-                for work, want, curr, already, stopped in rows:
-                    total_c = want + curr + already + stopped
-                    doc = {
-                        "key": work,
-                        "type": {"set": "work"},
-                        "readinglog_count": {"set": total_c},
-                        "want_to_read_count": {"set": want},
-                        "currently_reading_count": {"set": curr},
-                        "already_read_count": {"set": already},
-                        "stopped_reading_count": {"set": stopped},
-                    }
-                    docs.append(doc)
-
-                for i in range(0, len(docs), args.batch):
-                    batch = docs[i : i + args.batch]
-                    payload = __import__("json").dumps(batch).encode()
-                    st = time.time()
-                    res = client.post(
-                        f"{update_url}?commitWithin=60000",
-                        content=payload,
-                        headers=headers,
-                        params={"commitWithin": "60000"},
-                    )
-                    post_t += time.time() - st
-                    try:
-                        res.raise_for_status()
-                    except Exception:
-                        print(f"[reading_log batch {batches} failed] {res.status_code} {res.text[:1000]}", flush=True)
-                        raise
-                    total += len(batch)
-                    batches += 1
-                    if batches % 20 == 0:
-                        print(f"[reading_log batch {batches}] {len(batch)} -> total {total} avg {post_t / batches:.2f}s", flush=True)
-            print(f"[reading_log done] total={total} batches={batches} post_t={post_t:.2f}s", flush=True)
+            docs = []
+            for work, want, curr, already, stopped in rows:
+                total_c = want + curr + already + stopped
+                doc = {
+                    "key": work,
+                    "type": {"set": "work"},
+                    "readinglog_count": {"set": total_c},
+                    "want_to_read_count": {"set": want},
+                    "currently_reading_count": {"set": curr},
+                    "already_read_count": {"set": already},
+                    "stopped_reading_count": {"set": stopped},
+                }
+                docs.append(doc)
+            batches = [docs[i : i + args.batch] for i in range(0, len(docs), args.batch)]
+            if args.concurrency > 1:
+                print(f"[reading_log] posting {len(batches)} batches conc={args.concurrency}...", flush=True)
+                _, post_t = asyncio.run(post_batches_async(batches, update_url, args.concurrency))
+            else:
+                _, post_t = post_batches_sync(batches, update_url)
+            print(f"[reading_log done] total={len(docs)} batches={len(batches)} post_t={post_t:.2f}s docs/s={len(docs) / post_t:.1f}", flush=True)
 
     elapsed = time.time() - t0
     print(f"[all done] elapsed={elapsed:.2f}s", flush=True)
