@@ -408,6 +408,41 @@ curl "http://localhost:8983/solr/openlibrary/select?q=frankenstein&rows=3&wt=jso
 docker compose run --rm home python -m openlibrary.solr.update --config conf/openlibrary.yml --update pprint /works/OL45883W
 ```
 
+### Rust full (isolated, 8985) — work/edition Gold via DuckDB + Rust
+
+`compose.rust_full.yaml` runs an isolated `solr:10.0.0` at `http://localhost:8985` (`solr_rust_full`, `4g` heap, `ramBufferSizeMB=512`, `autoSoftCommit -1`, mount `/mnt/HC_Volume_106672133/solr_rust_full`) so `dev 8983` (`7.2M` docs) stays untouched. `rust_solr` builds `work` docs with nested `edition` children from `lake/bronze/*.parquet` + `lake/silver` buckets (`rust_solr/src/main.rs`, `query.rs`, `transform/mod.rs`).
+
+**Gold pipeline (from dump `ol_dump_2026-07-31.txt.gz:7.1G`):**
+```bash
+# once
+.venv/bin/python mvp_bronze.py          # -> lake/bronze/{works,editions,authors}.parquet 42M rows
+.venv/bin/python mvp_silver_py.py       # -> lake/silver/editions.parquet + works_b/editions_bucketed
+
+# 10k sanity (START_AT=/works/OL1W)
+cargo run --release -p rust_solr -- --limit 10000 --out /tmp/rust_10k.parquet
+curl "http://localhost:8985/solr/openlibrary/select?q=type:work&rows=0" # -> 10000
+
+# full 14.4M works -> 41M works + 54M editions (96M docs) via chunked manifests
+cargo build --release
+for i in $(seq 0 720); do cargo run --release -p rust_solr -- --chunks lake/silver/chunks_20000.json --chunk-index $i --out lake/gold/rust_full/part-$(printf %04d $i).parquet; done
+# NDJSON per chunk + parallel load: split -l 50000 chunk_ | parallel -j8 'curl --data-binary @{} http://localhost:8985/solr/openlibrary/update/json/docs?commitWithin=60000'
+curl "http://localhost:8985/solr/openlibrary/update?commit=true"
+curl "http://localhost:8985/solr/openlibrary/select?q=*:*&facet=true&facet.field=type&rows=0" # edition ~54M work ~41M
+```
+
+**Authors are dropped at Gold build** — `rust_solr/src/main.rs:92` fetches `bronze/authors.parquet` only for denorm (`author_key/name/facet` into `work`) and emits `work` only (`transform/mod.rs:202`). So `facet type:author` `0` and `GET /search/authors?q=mark` empty (`AuthorSearchScheme: universe type:author`).
+
+**Fix — stream authors separately without re-running Gold** (`mvp_authors_to_solr.py`, raw `VARCHAR` `->` Solr, no `dict`):
+```bash
+# minimal fields for AuthorSearchScheme (name/alternate_names/birth_date) — ~4min 6.8M
+.venv/bin/python mvp_authors_to_solr.py --bronze lake/bronze/authors.parquet --solr http://localhost:8985/solr/openlibrary --batch 10000
+# verify
+curl "http://localhost:8985/solr/openlibrary/select?q=*:*&fq=type:author&rows=0" # -> 6844404
+curl "http://localhost:8985/solr/openlibrary/select?q=mark&fq=type:author&rows=3&fl=key,name" | python3 -m json.tool
+# full facet now: edition 54M work 41M author 6.8M (103M total)
+```
+`work_count/top_work/top_subjects` aggregated by `AuthorSolrUpdater` via Solr `author_key` facet are omitted for now (require `gold` `GROUP BY` if full parity needed).
+
 ## Public Documentation
 
 | Audience | URL | What's there |
