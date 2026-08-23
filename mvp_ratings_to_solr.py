@@ -60,18 +60,25 @@ async def post_batches_async(batches: list[list[dict]], update_url: str, concurr
     sem = asyncio.Semaphore(concurrency)
     headers = {"Content-Type": "application/json"}
     t0 = time.time()
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=120.0) as client:
 
         async def _post(batch: list[dict]) -> None:
             async with sem:
                 payload = _json.dumps(batch).encode()
-                res = await client.post(
-                    f"{update_url}?commitWithin=60000",
-                    content=payload,
-                    headers=headers,
-                    params={"commitWithin": "60000"},
-                )
-                res.raise_for_status()
+                for attempt in range(3):
+                    try:
+                        res = await client.post(
+                            f"{update_url}?commitWithin=60000",
+                            content=payload,
+                            headers=headers,
+                            params={"commitWithin": "60000"},
+                        )
+                        res.raise_for_status()
+                        break
+                    except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.RemoteProtocolError) as e:
+                        if attempt == 2:
+                            raise
+                        await asyncio.sleep(2**attempt)
 
         await asyncio.gather(*[_post(b) for b in batches])
     return len(batches), time.time() - t0
@@ -80,16 +87,23 @@ async def post_batches_async(batches: list[list[dict]], update_url: str, concurr
 def post_batches_sync(batches: list[list[dict]], update_url: str) -> tuple[int, float]:
     headers = {"Content-Type": "application/json"}
     t0 = time.time()
-    with httpx.Client(timeout=60.0) as client:
+    with httpx.Client(timeout=120.0) as client:
         for b in batches:
             payload = _json.dumps(b).encode()
-            res = client.post(
-                f"{update_url}?commitWithin=60000",
-                content=payload,
-                headers=headers,
-                params={"commitWithin": "60000"},
-            )
-            res.raise_for_status()
+            for attempt in range(3):
+                try:
+                    res = client.post(
+                        f"{update_url}?commitWithin=60000",
+                        content=payload,
+                        headers=headers,
+                        params={"commitWithin": "60000"},
+                    )
+                    res.raise_for_status()
+                    break
+                except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.RemoteProtocolError) as e:
+                    if attempt == 2:
+                        raise
+                    time.sleep(2**attempt)
     return len(batches), time.time() - t0
 
 
