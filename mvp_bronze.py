@@ -17,7 +17,9 @@ from collections import defaultdict
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-OL_DUMP = "/storage/openlibrary/ol_dump_2026-07-31.txt.gz"
+import os
+
+OL_DUMP = os.environ.get("OL_DUMP", "/storage/openlibrary/ol_dump_2026-07-31.txt.gz")
 OUT_DIR = Path("lake/bronze")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 

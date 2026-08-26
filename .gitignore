@@ -76,3 +76,11 @@ works.json
 authors.json
 editions_by_work.json
 solr_docs.jsonl
+
+# local session artifacts
+.tmp/
+solr_cache_experiment_issue.md
+solr_performance_findings.md
+solr_performance_plan.md
+solr_useColdSearcher_pr.md
+fast_solr_inserts.md
