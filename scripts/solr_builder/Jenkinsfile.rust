@@ -33,7 +33,7 @@ pipeline {
     parameters {
         string(name: 'DUMP_URL', defaultValue: 'https://openlibrary.org/data/ol_dump_latest.txt.gz',
                description: 'Dump to download (redirects are chased to the dated file)')
-        string(name: 'LAKE_HOST_DIR', defaultValue: '/mnt/HC_Volume_106672133/openlibrary',
+        string(name: 'LAKE_HOST_DIR', defaultValue: "/mnt/HC_Volume_106672133/openlibrary/lake_full",
                description: 'Host dir holding dumps/lake/solr data; bind-mounted 1:1 into the agent')
         booleanParam(name: 'RESUME', defaultValue: true,
                description: 'Skip stages whose outputs already exist (chunk files, bronze, etc.)')
@@ -108,8 +108,9 @@ pipeline {
             steps {
                 sh label: "download ${env.DUMP_FILE}", script: '''#!/bin/bash
                     set -euo pipefail
-                    mkdir -p "$LAKE_DIR/dumps"
-                    DUMP="$LAKE_DIR/dumps/${DUMP_FILE}"
+                    DUMP_DIR="$(dirname "$LAKE_DIR")/dumps"
+                    mkdir -p "$DUMP_DIR"
+                    DUMP="$DUMP_DIR/${DUMP_FILE}"
                     if [ "${RESUME:-true}" = true ] && [ -s "$DUMP" ]; then
                         echo "resume: $DUMP exists ($(du -h "$DUMP" | cut -f1))"
                     else
@@ -126,7 +127,7 @@ pipeline {
                 sh label: 'bronze -> silver -> bucketing -> orphans', script: '''#!/bin/bash
                     set -euo pipefail
                     # newest local dump wins (stage 3 already ensured it exists)
-                    OL_DUMP=$(ls -t "$LAKE_DIR"/dumps/ol_dump_*.txt.gz | head -1)
+                    OL_DUMP=$(ls -t "$(dirname "$LAKE_DIR")"/dumps/ol_dump_*.txt.gz | head -1)
                     export OL_DUMP
                     echo "using dump: $OL_DUMP"
                     rm -rf lake && ln -sfn "$LAKE_DIR" lake

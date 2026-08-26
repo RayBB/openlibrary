@@ -43,7 +43,7 @@ legacyParams << new StringParameterDefinition("NO_PROXY", "archive.org,openlibra
 // ---- Rust lake pipeline params (keep in sync with Jenkinsfile.rust) ----
 def rustParams = []
 rustParams << new StringParameterDefinition("DUMP_URL", "https://openlibrary.org/data/ol_dump_latest.txt.gz", "Dump to download (redirects are chased to the dated file)")
-rustParams << new StringParameterDefinition("LAKE_HOST_DIR", "/mnt/HC_Volume_106672133/openlibrary", "Host dir holding dumps/lake/solr data; bind-mounted 1:1 into the agent")
+rustParams << new StringParameterDefinition("LAKE_HOST_DIR", "/mnt/HC_Volume_106672133/openlibrary/lake_full", "Host dir holding dumps/lake/solr data; bind-mounted 1:1 into the agent")
 rustParams << new BooleanParameterDefinition("RESUME", true, "Skip stages whose outputs already exist (chunk files, bronze, etc.)")
 rustParams << new BooleanParameterDefinition("WIPE_SOLR", false, "Empty the isolated solr_rust_full data dir before loading")
 rustParams << new BooleanParameterDefinition("FETCH_IA_METADATA", true, "Fetch IA lite metadata so ebook_access/has_fulltext are real (~30-90 min). If false, ocaids stay unclassified")
