@@ -62,12 +62,102 @@ Set iteration order for `choose_sorting_lcc/ddc` is nondeterministic in both Pyt
 
 Full `doc_json` still omits `editions` nested, `by_statement`, `number_of_pages_median`, `cover_edition_key`, `ia`, `ebook_*`, `chapter`, `format` — deferred for next iteration (needs EditionSolrBuilder full port). Core fields now parity-checked.
 
+## Full parity (2026-08-25) — 0 field diffs vs WorkSolrUpdater, incl. orphan fake-works
+
+The builder is now a complete port. Verified with `mvp_diff_check.py` against Python ground truth
+(`mvp_py_ground.py` runs the real `WorkSolrUpdater` over the same lake rows): **98,142 works across
+five runs → `FULL PARITY ✓`, zero field diffs**, comparing order-insensitively on multivalued fields,
+allowing equal-length `lcc_sort`/`ddc_sort` max-ties and ±1h `last_modified_i` on docs that get
+index-time `now()` (`datetimestr_to_int(None)` semantics). Runs: 10k + 5k legacy windows, 20k chunk
+(chunk 1000), 33k chunk **with 13,142 orphan editions** indexed as fake `/works/OLxxxM` works
+(chunk 654). Since the first port added: nested edition docs (`id_*`, `ia_box_id`, chapter,
+scorecard fields), work-level `lending_edition_s`/`lending_identifier_s`/`printdisabled_s`, real IA
+availability (below), LCC short-form leading-zero fix, DDC word-boundary fix (Python skips a match
+when the adjacent chars are word chars — not a transition check), and orphan coverage.
+
+## Orphan editions -> fake works
+
+~1.95M lake editions have no linked work; production indexes each as a standalone work under
+`/works/OLxxxM` (`work.py:67-83`). Chunk mode does the same since the bucketed silver drops NULL
+`work_key` rows:
+
+```bash
+# one-time: build silver/orphans_bucketed/ (numeric-id buckets of orphan editions)
+.venv/bin/python mvp_partition_orphans.py
+# then run chunks as usual -- rust picks up orphans in [lo,hi] automatically ("Indexed N orphan
+# editions as fake works" in stderr)
+```
+
+7 non-numeric-key orphans (`/books/ia:*`) are skipped by the bucketing (logged).
+
+## Real availability via --ia-metadata
+
+By default every ocaid degrades to `ebook_access: unclassified` (matches prod's skip-IA mode).
+Pass `--ia-metadata <ia_lite.parquet>` (built by `mvp_ia_fetch.py`) to compute REAL
+`ebook_access`/`has_fulltext`/`public_scan_b`/`ia_collection` per `InternetArchiveProvider.get_access`
+(inlibrary→borrowable, printdisabled→printdisabled, access-restricted/no-collections→unclassified,
+else public), plus nested-edition scores that depend on access. Missing ocaids degrade to
+unclassified exactly like prod when metadata can't be fetched.
+
+```bash
+# fetch lite metadata for all lake ocaids (~6.4M; resumable parts/, then merge)
+.venv/bin/python mvp_ia_fetch.py                       # full run
+.venv/bin/python mvp_ia_fetch.py --limit 1000          # smoke test
+.venv/bin/python mvp_ia_fetch.py --merge-only          # rebuild ia_lite.parquet from parts/
+
+cargo run --release -p rust_solr -- --chunks lake_full/silver/chunks_20000.json --chunk-index 0 \
+  --out part-0000.parquet \
+  --ia-metadata /mnt/HC_Volume_106672133/openlibrary/lake_full/ia/ia_lite.parquet
+```
+
+Note: prod's bulk endpoint (`advancedsearch.php?doc_ids=...`) returns unrelated results when called
+from outside prod even with `service=metadata__unlimited`; `mvp_ia_fetch.py` uses the scrape API
+(`services/search/v1/scrape`, exact matches, no throttling) instead, with retry + per-item
+`/metadata/<ocaid>` fallbacks.
+
+## Parity harness
+
+```bash
+# python ground truth (real WorkSolrUpdater + FakeDataProvider fed the same ia_lite.parquet)
+PYTHONPATH=/root/openlibrary .venv/bin/python mvp_py_ground.py --limit 10000 \
+  --out /tmp/py.json --ia-metadata /tmp/opencode/ia_test/ia_lite.parquet
+# diff (exit 1 on any unallowed mismatch)
+PYTHONPATH=/root/openlibrary .venv/bin/python mvp_diff_check.py \
+  --py /tmp/py.json --rust /tmp/rust_10k.parquet
+```
+
+Unit tests (`cargo test`) cover `get_access` cases from `book_providers.py`, acquisition-access
+mapping, direct-provider precedence, and scorecard aggregation.
+
 ## Next steps
 
-1. Port remaining `EditionSolrBuilder` fields (editions, by_statement, median pages, cover_edition_key, format, chapter, ebook_access with `ocaid -> unclassified` logic) to reach 0% core mismatch and close `editions` gap.
-2. Fix LCC tie determinism (sort before max) if strict byte parity needed.
-3. Add `cargo test` fixtures from Python `test_ddc.py`/`test_lcc.py` + golden 10-work JSON.
+1. ~~Port remaining `EditionSolrBuilder` fields~~ — done (full parity, incl. orphan fake-works).
+2. ~~Real availability~~ — done (`--ia-metadata`).
+3. ~~Author aggregates~~ — done (`mvp_author_aggregates.py`): lake-side DuckDB rollups matching
+   `AuthorSolrUpdater`'s Solr facet semantics exactly; validated 300/300 top authors vs the real
+   updater querying a loaded index (`--validate N`, zero mismatches). Posts atomic `{"set":}` updates
+   to all 15.4M authors in ~30 min at conc 8.
 4. Solr loading deferred (`mvp_load.py:24` `commitWithin=60000`).
+
+## Author aggregates
+
+```bash
+# one-time: slim sidecars from gold parts (pyarrow+orjson streaming, ~14 min)
+python mvp_author_aggregates.py --no-post            # extract + aggregate + dump author_aggs.parquet
+# validate against the REAL AuthorSolrUpdater hitting --solr (default :8985) before posting
+python mvp_author_aggregates.py --duckdb-only --validate 300
+# push atomic updates for every author (zeros included, like Solr facet sums)
+python mvp_author_aggregates.py --load-aggs          # requires AGG_DUMP env or default path
+```
+
+Semantics ported: `work_count` = distinct works per author (author arrays deduped); `top_work` =
+max `edition_count` (ties broken by key asc — Solr's internal tie order is opaque, validate accepts
+equal-max ties); `top_subjects` = each of the four facet fields' top-10 buckets (count desc, term
+ASC ties like Lucene), merged by `(count, val)` DESC into a global top-10 **without cross-field
+dedup** (a value can appear via both subject_facet and place_facet, as in prod); ratings/reading-log
+fields are SUMs over the author's works run through `Ratings.work_ratings_summary_from_counts`,
+always emitted (zeros included). Memory-safe: gold JSON never touches DuckDB — extraction streams
+via pyarrow/orjson into slim parquets first, then all aggregation is partitioned small-row SQL.
 
 ---
 

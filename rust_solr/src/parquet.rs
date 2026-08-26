@@ -22,7 +22,12 @@ pub fn write_gold(docs: &[serde_json::Value], out_path: &str) -> Result<()> {
     for chunk in docs.chunks(10000) {
         let keys: Vec<String> = chunk
             .iter()
-            .map(|d| d.get("key").and_then(|v| v.as_str()).unwrap_or("").to_string())
+            .map(|d| {
+                d.get("key")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string()
+            })
             .collect();
         // Parallel JSON serialization
         let doc_jsons: Vec<String> = chunk
@@ -31,7 +36,11 @@ pub fn write_gold(docs: &[serde_json::Value], out_path: &str) -> Result<()> {
             .collect();
         let titles: Vec<Option<String>> = chunk
             .iter()
-            .map(|d| d.get("title").and_then(|v| v.as_str()).map(|s| s.to_string()))
+            .map(|d| {
+                d.get("title")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
             .collect();
         let edition_counts: Vec<Option<i64>> = chunk
             .iter()

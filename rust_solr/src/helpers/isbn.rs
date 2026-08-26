@@ -32,7 +32,11 @@ fn check_digit_13(isbn12: &str) -> Option<char> {
         sum += w * d;
     }
     let r = 10 - (sum % 10);
-    if r == 10 { Some('0') } else { Some(std::char::from_digit(r as u32, 10).unwrap()) }
+    if r == 10 {
+        Some('0')
+    } else {
+        Some(std::char::from_digit(r as u32, 10).unwrap())
+    }
 }
 
 fn isbn_13_to_10(isbn13: &str) -> Option<String> {
@@ -79,7 +83,13 @@ mod tests {
     use super::*;
     #[test]
     fn test_opposite() {
-        assert_eq!(opposite_isbn("9781576079454"), Some("1576079457".to_string()));
-        assert_eq!(opposite_isbn("1576079457"), Some("9781576079454".to_string()));
+        assert_eq!(
+            opposite_isbn("9781576079454"),
+            Some("1576079457".to_string())
+        );
+        assert_eq!(
+            opposite_isbn("1576079457"),
+            Some("9781576079454".to_string())
+        );
     }
 }

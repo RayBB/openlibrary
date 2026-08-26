@@ -432,6 +432,7 @@ cargo run --release -p rust_solr -- --limit 10000 --out /tmp/rust_10k.parquet
 curl "http://localhost:8985/solr/openlibrary/select?q=type:work&rows=0" # -> 10000
 
 # full 41.5M works + 56.6M editions (~96M docs incl nested) via chunked manifests
+.venv/bin/python mvp_partition_orphans.py   # one-time: bucket ~1.95M orphan editions -> silver/orphans_bucketed/
 cargo build --release
 for i in $(seq 0 1440); do cargo run --release -p rust_solr -- --chunks lake_full/silver/chunks_10000.json --chunk-index $i --out lake_full/gold/rust_full/part-$(printf %04d $i).parquet; done
 # NDJSON per chunk + parallel load: split -l 50000 chunk_ | parallel -j8 'curl --data-binary @{} http://localhost:8985/solr/openlibrary/update/json/docs?commitWithin=60000'
@@ -450,7 +451,7 @@ curl "http://localhost:8985/solr/openlibrary/select?q=*:*&fq=type:author&rows=0"
 curl "http://localhost:8985/solr/openlibrary/select?q=mark&fq=type:author&rows=3&fl=key,name" | python3 -m json.tool
 # full facet now: edition 54M work 41M author 15.4M (111M total)
 ```
-`work_count/top_work/top_subjects` aggregated by `AuthorSolrUpdater` via Solr `author_key` facet are omitted for now (require `gold` `GROUP BY` if full parity needed).
+`work_count/top_work/top_subjects` aggregated by `AuthorSolrUpdater` via Solr `author_key` facet are **now covered lake-side**: `mvp_author_aggregates.py` recomputes the exact facet semantics (per-field top-10 term buckets merged `(count,val)` DESC without cross-field dedup, ratings/reading-log sums through `work_ratings_summary_from_counts`) and posts atomic updates to all 15.4M authors (~30 min). Validated 300/300 top authors against the real updater querying a loaded index (`--validate N`).
 
 **Lists** are also dropped at Gold (`ListSolrUpdater` equivalent); stream them via `mvp_lists_to_solr.py` (minimal fields for `ListSearchScheme` name search):
 ```bash
@@ -458,6 +459,16 @@ curl "http://localhost:8985/solr/openlibrary/select?q=mark&fq=type:author&rows=3
 # verify
 curl "http://localhost:8985/solr/openlibrary/select?q=*:*&fq=type:list&rows=0" # -> ~260316 (named lists only)
 ```
+
+**Availability (ebook_access) is REAL when `--ia-metadata` is passed** — `rust_solr` ports `InternetArchiveProvider.get_access` (`openlibrary/book_providers.py:337`): `inlibrary`→`borrowable`, `printdisabled`→`printdisabled`, access-restricted/no-collections→`unclassified`, else `public`; missing ocaids degrade to `unclassified` exactly like prod. Also emits work-level `ia_collection`, `lending_edition_s`/`lending_identifier_s`/`printdisabled_s` (deprecated fields, parity), and real nested-edition availability + scorecard fields. Without the flag, every ocaid degrades to `unclassified` (skip-IA mode). Metadata comes from `mvp_ia_fetch.py` (`services/search/v1/scrape` — exact, unthrottled; prod's `advancedsearch.php?doc_ids=` bulk returns unrelated rows from outside prod):
+```bash
+.venv/bin/python mvp_ia_fetch.py --limit 1000        # smoke test
+.venv/bin/python mvp_ia_fetch.py                     # full ~6.4M ocaids, resumable parts/ -> ia_lite.parquet
+cargo run --release -p rust_solr -- --chunks ... --chunk-index 0 --out part-0000.parquet \
+  --ia-metadata /mnt/HC_Volume_106672133/openlibrary/lake_full/ia/ia_lite.parquet
+```
+
+**Builder parity: 0 field diffs vs `WorkSolrUpdater`, including orphan fake-works.** `mvp_py_ground.py` runs the real Python updater over the same lake rows (fed the same ia_lite parquet); `mvp_diff_check.py` diffs field-by-field (order-insensitive multivalued, equal-length lcc/ddc max-ties, ±1h index-time `last_modified_i` allowed). Verified on 98,142 works across 5 runs → `FULL PARITY ✓`. Orphan editions (~1.95M with no linked work) are indexed as standalone `/works/OLxxxM` fake works in chunk mode — one-time `mvp_partition_orphans.py` builds `silver/orphans_bucketed/`; rust picks them up per-chunk automatically.
 
 **Ratings / ReadingLog are also dropped at Gold** — `WorkSolrBuilder:582,586` `ratings_average/ratings_sortable/ratings_count{1..5}` (`openlibrary/core/ratings.py:126` `work_ratings_summary_from_counts`) + `readinglog_count/want_to_read_count/...` (`openlibrary/core/bookshelves.py:687` `get_work_summary`) need `postgres` `ratings` (`838k rows` `495k works`) + `bookshelves_books` (`12.5M rows` `3.18M works`) via `solr_duckdb/parquet/ratings.parquet:5.1M` + `reading_log.parquet:55M`. Not in `lake/bronze` dumps.
 

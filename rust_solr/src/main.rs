@@ -1,10 +1,10 @@
 mod helpers;
-mod query;
 mod parquet;
+mod query;
 mod transform;
 
-use clap::Parser;
 use anyhow::Result;
+use clap::Parser;
 use rayon::prelude::*;
 
 #[derive(Parser, Debug)]
@@ -32,12 +32,20 @@ struct Args {
     /// Output format: parquet (default) or ndjson (one JSON doc per line, for Solr /update/json/docs)
     #[arg(long, default_value = "parquet")]
     format: String,
+    /// Optional ia_lite.parquet (from mvp_ia_fetch.py). When set, ebook_access/has_fulltext/
+    /// public_scan_b/ia_collection are computed from real IA metadata instead of treating every
+    /// ocaid as UNCLASSIFIED.
+    #[arg(long)]
+    ia_metadata: Option<String>,
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
     // set rayon threads
-    rayon::ThreadPoolBuilder::new().num_threads(args.workers).build_global().ok();
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(args.workers)
+        .build_global()
+        .ok();
 
     let t0 = std::time::Instant::now();
     let fetched = query::fetch(
@@ -49,6 +57,7 @@ fn main() -> Result<()> {
         &args.bronze_authors,
         args.chunks.as_deref(),
         args.chunk_index,
+        args.ia_metadata.as_deref(),
     )?;
     let prep = t0.elapsed().as_secs_f64();
     eprintln!("Fetched {} works", fetched.works.len());
@@ -75,28 +84,40 @@ fn main() -> Result<()> {
                     .map(|arr| {
                         arr.iter()
                             .filter_map(|a| {
-                                let ak = a.get("author").and_then(|v| {
-                                    if v.is_object() {
-                                        v.get("key").and_then(|k| k.as_str()).map(|s| s.to_string())
-                                    } else if v.is_string() {
-                                        v.as_str().map(|s| s.to_string())
-                                    } else {
-                                        None
-                                    }
-                                }).or_else(|| a.get("key").and_then(|v| v.as_str()).map(|s| s.to_string()));
+                                let ak = a
+                                    .get("author")
+                                    .and_then(|v| {
+                                        if v.is_object() {
+                                            v.get("key")
+                                                .and_then(|k| k.as_str())
+                                                .map(|s| s.to_string())
+                                        } else if v.is_string() {
+                                            v.as_str().map(|s| s.to_string())
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .or_else(|| {
+                                        a.get("key").and_then(|v| v.as_str()).map(|s| s.to_string())
+                                    });
                                 ak.and_then(|k| fetched.authors.get(&k).cloned())
                             })
                             .collect()
                     })
                     .unwrap_or_default();
-                let doc = transform::build_solr_doc(w, eds, &work_authors);
+                let doc = transform::build_solr_doc(w, eds, &work_authors, &fetched.ia_metadata);
                 docs.push(doc);
             }
             docs
         })
         .collect();
     let build = t1.elapsed().as_secs_f64();
-    eprintln!("Transform {} docs build {:.2}s {:.1} docs/s", docs.len(), build, docs.len() as f64 / build.max(0.001));
+    eprintln!(
+        "Transform {} docs build {:.2}s {:.1} docs/s",
+        docs.len(),
+        build,
+        docs.len() as f64 / build.max(0.001)
+    );
 
     let t2 = std::time::Instant::now();
     match args.format.as_str() {
@@ -105,11 +126,23 @@ fn main() -> Result<()> {
     }
     let write_t = t2.elapsed().as_secs_f64();
     let total = t0.elapsed().as_secs_f64();
-    eprintln!("Wrote {} to {} in {:.2}s total {:.2}s (prep {:.2}s + build {:.2}s)", docs.len(), args.out, write_t, total, prep, build);
+    eprintln!(
+        "Wrote {} to {} in {:.2}s total {:.2}s (prep {:.2}s + build {:.2}s)",
+        docs.len(),
+        args.out,
+        write_t,
+        total,
+        prep,
+        build
+    );
     // estimate
     let full = 14406749.0;
     let est_build = (full / args.limit as f64) * build;
     let est_total = (full / args.limit as f64) * total;
-    eprintln!("Estimate full 14.4M: build {:.2}h total {:.2}h", est_build/3600.0, est_total/3600.0);
+    eprintln!(
+        "Estimate full 14.4M: build {:.2}h total {:.2}h",
+        est_build / 3600.0,
+        est_total / 3600.0
+    );
     Ok(())
 }

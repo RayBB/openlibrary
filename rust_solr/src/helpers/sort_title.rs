@@ -29,8 +29,14 @@ mod tests {
     #[test]
     fn test_sort_title() {
         assert_eq!(sort_title("The Great Gatsby", None), "Great Gatsby, The");
-        assert_eq!(sort_title("A Tale of Two Cities", None), "Tale of Two Cities, A");
+        assert_eq!(
+            sort_title("A Tale of Two Cities", None),
+            "Tale of Two Cities, A"
+        );
         assert_eq!(sort_title("Great Gatsby", None), "Great Gatsby");
-        assert_eq!(sort_title("The Title", Some("Subtitle")), "Title: Subtitle, The");
+        assert_eq!(
+            sort_title("The Title", Some("Subtitle")),
+            "Title: Subtitle, The"
+        );
     }
 }

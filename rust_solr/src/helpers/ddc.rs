@@ -59,7 +59,12 @@ pub fn normalize_ddc(ddc: &str) -> Vec<String> {
             // printable check: python printable includes digits, letters, punctuation, whitespace
             // VALID_CHARS = set(printable) - set("/'′',")
             // So keep if c in printable and not in "/'′',"
-            let printable = c.is_ascii() && (*c as u8 >= 32 && *c as u8 <= 126) || *c == '\t' || *c == '\n' || *c == '\r' || *c == ' ' || *c == '\x0c';
+            let printable = c.is_ascii() && (*c as u8 >= 32 && *c as u8 <= 126)
+                || *c == '\t'
+                || *c == '\n'
+                || *c == '\r'
+                || *c == ' '
+                || *c == '\x0c';
             if !printable {
                 // python printable includes \t\n\r\x0b\x0c etc — but we approximate.
                 // For simplicity allow unicode? Python filters to printable only, so non-printable removed.
@@ -96,24 +101,21 @@ pub fn normalize_ddc(ddc: &str) -> Vec<String> {
         // But python's code is odd; we try to emulate: if start>0 and re.search(r"\b", filtered[start-1..start]) is Some then continue? That would be if single char contains boundary — which for "a" returns Some at pos0? Test with python quickly mental: re.search(r"\b", "a") returns match at 0 (since \b at start of word). So it would skip many valid matches. So we instead implement intended logic: DDC should start/end at word boundaries.
         // We'll use proper boundary check.
 
-        let at_start_boundary = if start == 0 {
-            true
-        } else {
-            let prev = filtered.chars().nth(start - 1).unwrap();
-            let curr = filtered.chars().nth(start).unwrap();
-            is_word_char(prev) != is_word_char(curr)
-        };
-        if !at_start_boundary {
+        // Python (utils/ddc.py:58-65) checks \b against the SINGLE adjacent chars:
+        //   skip if start>0 and ddc[start-1] is a word char
+        //   skip if end<len and ddc[end]     is a word char
+        // (not a transition check — the char at `end` itself decides)
+        let prev_is_word = start > 0
+            && filtered
+                .chars()
+                .nth(start - 1)
+                .map(is_word_char)
+                .unwrap_or(false);
+        if prev_is_word {
             continue;
         }
-        let at_end_boundary = if end >= filtered.len() {
-            true
-        } else {
-            let last = filtered.chars().nth(end - 1).unwrap();
-            let next = filtered.chars().nth(end).unwrap();
-            is_word_char(last) != is_word_char(next)
-        };
-        if !at_end_boundary {
+        let next_is_word = filtered.chars().nth(end).map(is_word_char).unwrap_or(false);
+        if next_is_word {
             continue;
         }
 
@@ -181,8 +183,20 @@ pub fn normalize_ddc(ddc: &str) -> Vec<String> {
 }
 
 pub fn choose_sorting_ddc(ddcs: &[String]) -> String {
-    let preferred: Vec<&String> = ddcs.iter().filter(|d| d.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false)).collect();
-    let candidates: Vec<&String> = if !preferred.is_empty() { preferred } else { ddcs.iter().collect() };
+    let preferred: Vec<&String> = ddcs
+        .iter()
+        .filter(|d| {
+            d.chars()
+                .next()
+                .map(|c| c.is_ascii_digit())
+                .unwrap_or(false)
+        })
+        .collect();
+    let candidates: Vec<&String> = if !preferred.is_empty() {
+        preferred
+    } else {
+        ddcs.iter().collect()
+    };
     // Python: max(preferred or ddcs, key=len) -> first max wins
     let mut best: Option<&String> = None;
     let mut best_len: usize = 0;
@@ -204,8 +218,7 @@ mod tests {
         assert_eq!(normalize_ddc("123"), vec!["123"]);
         assert_eq!(normalize_ddc("j123"), vec!["j123", "123"]);
         assert_eq!(normalize_ddc("813/.54"), vec!["813.54"]);
-        // 92 should be filtered if multiple
-        let v = normalize_ddc("823.914 92");
-        assert!(v.contains(&"823.914".to_string()));
+        // 92 rides along as a suffix on the same result (matches openlibrary/utils/ddc.py)
+        assert_eq!(normalize_ddc("823.914 92"), vec!["823.914 92"]);
     }
 }

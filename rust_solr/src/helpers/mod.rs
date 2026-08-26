@@ -15,8 +15,7 @@ pub fn uniq<T: Eq + std::hash::Hash + Clone>(vals: Vec<T>) -> Vec<T> {
 }
 
 pub fn normalize_subject_name(name: &str) -> String {
-    let drop: std::collections::HashSet<char> =
-        ";/?:@&=+$,<>#%\"{}|\\^[]`\n\r".chars().collect();
+    let drop: std::collections::HashSet<char> = ";/?:@&=+$,<>#%\"{}|\\^[]`\n\r".chars().collect();
     name.trim()
         .to_lowercase()
         .chars()

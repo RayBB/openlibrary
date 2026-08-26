@@ -22,7 +22,8 @@ fn collapse_multiple_space(s: &str) -> String {
 fn clean_raw_lcc(raw_lcc: &str) -> String {
     let mut lcc = collapse_multiple_space(&raw_lcc.replace('\\', " "));
     lcc = lcc.trim().to_string();
-    if (lcc.starts_with('[') && lcc.ends_with(']')) || (lcc.starts_with('(') && lcc.ends_with(')')) {
+    if (lcc.starts_with('[') && lcc.ends_with(']')) || (lcc.starts_with('(') && lcc.ends_with(')'))
+    {
         lcc = lcc[1..lcc.len() - 1].to_string();
     }
     lcc
@@ -87,7 +88,11 @@ pub fn sortable_lcc_to_short_lcc(lcc: &str) -> String {
     let letters_raw = caps.name("letters").unwrap().as_str();
     let letters = letters_raw.trim_end_matches('-').to_string();
     let number_raw = caps.name("number").map(|m| m.as_str()).unwrap_or("");
-    let number = number_raw.trim_end_matches('0').trim_end_matches('.').to_string();
+    // Python: parts["number"].strip("0").strip(".") — strips zeros from BOTH ends, then dots
+    let number = number_raw
+        .trim_matches('0')
+        .trim_end_matches('.')
+        .to_string();
     let cutter1_raw = caps.name("cutter1").map(|m| m.as_str()).unwrap_or("");
     let cutter1 = cutter1_raw.trim().to_string();
     let rest_raw = caps.name("rest").map(|m| m.as_str()).unwrap_or("");
