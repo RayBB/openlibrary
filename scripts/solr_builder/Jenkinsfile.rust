@@ -277,9 +277,9 @@ PYEOF
                         --bronze "$LAKE_DIR/bronze/lists.parquet" $LIMIT
                     $PY mvp_ratings_to_solr.py  --solr "$SOLR" --batch 10000 \
                         --ratings "$RATINGS" --reading-log "$READING_LOG" \
-                        --gold $GOLD $SAMPLE --concurrency "${POST_CONCURRENCY:-8}"
+                        --gold "$GOLD" $SAMPLE --concurrency "${POST_CONCURRENCY:-8}"
                     $PY mvp_osp_to_solr.py      --solr "$SOLR" --batch 5000 \
-                        --osp-db "$OSP_DB" --gold $GOLD $SAMPLE --concurrency "${POST_CONCURRENCY:-8}"
+                        --osp-db "$OSP_DB" --gold "$GOLD" $SAMPLE --concurrency "${POST_CONCURRENCY:-8}"
                 '''
             }
         }
