@@ -122,12 +122,13 @@ pipeline {
             }
         }
         stage('4: Lake prep (bronze/silver/partitions/orphans)') {
-            environment {
-                OL_DUMP = "${LAKE_HOST_DIR}/dumps/${env.DUMP_FILE}"
-            }
             steps {
                 sh label: 'bronze -> silver -> bucketing -> orphans', script: '''#!/bin/bash
                     set -euo pipefail
+                    # newest local dump wins (stage 3 already ensured it exists)
+                    OL_DUMP=$(ls -t "$LAKE_DIR"/dumps/ol_dump_*.txt.gz | head -1)
+                    export OL_DUMP
+                    echo "using dump: $OL_DUMP"
                     mkdir -p lake && ln -sfn "$LAKE_DIR" lake
                     if [ "${RESUME:-true}" = true ] && [ -s lake/bronze/_meta.json ]; then
                         echo "resume: bronze exists"
