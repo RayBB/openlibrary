@@ -106,6 +106,7 @@ pipeline {
                 sh label: 'resolve + fetch dump', script: '''#!/bin/bash
                     set -euo pipefail
                     DUMP_DIR="$(dirname "$LAKE_DIR")/dumps"
+                    echo "stage3: LAKE_DIR=$LAKE_DIR DUMP_DIR=$DUMP_DIR RESUME=${RESUME:-unset}"
                     mkdir -p "$DUMP_DIR"
                     if [ "${RESUME:-true}" = true ] && compgen -G "$DUMP_DIR/ol_dump_*.txt.gz" >/dev/null; then
                         DUMP=$(ls -t "$DUMP_DIR"/ol_dump_*.txt.gz | head -1)
