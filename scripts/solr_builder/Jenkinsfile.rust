@@ -108,9 +108,10 @@ pipeline {
                     DUMP_DIR="$(dirname "$LAKE_DIR")/dumps"
                     echo "stage3: LAKE_DIR=$LAKE_DIR DUMP_DIR=$DUMP_DIR RESUME=${RESUME:-unset}"
                     mkdir -p "$DUMP_DIR"
-                    if [ "${RESUME:-true}" = true ] && compgen -G "$DUMP_DIR/ol_dump_*.txt.gz" >/dev/null; then
-                        DUMP=$(ls -t "$DUMP_DIR"/ol_dump_*.txt.gz | head -1)
-                        echo "resume: $(du -h "$DUMP" | cut -f1) ${DUMP##*/}"
+                    existing=$(ls -t $DUMP_DIR/ol_dump_*.txt.gz 2>/dev/null | head -1 || true)
+                    echo "stage3: existing=${existing:-none}"
+                    if [ "${RESUME:-true}" = true ] && [ -n "$existing" ] && [ -s "$existing" ]; then
+                        echo "resume: $(du -h "$existing" | cut -f1) ${existing##*/}"
                         exit 0
                     fi
                     DUMP_FILE=$(curl --max-time 60 -s -L -I -o /dev/null -w '%{url_effective}' "${DUMP_URL}")
