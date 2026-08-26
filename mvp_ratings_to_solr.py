@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import json as _json
 import math
 import subprocess
@@ -118,6 +119,10 @@ def main():  # noqa: PLR0915
     ap.add_argument("--no-commit", action="store_true")
     ap.add_argument("--skip-ratings", action="store_true")
     ap.add_argument("--skip-reading-log", action="store_true")
+    ap.add_argument("--gold", default="/mnt/HC_Volume_106672133/openlibrary/lake_full/gold/rust_full.parquet",
+                    help="gold parquet; work keys not present here are SKIPPED so atomic updates never create ghost stub docs")
+    ap.add_argument("--cleanup-ghosts", action="store_true",
+                    help="delete already-indexed stub docs whose keys are absent from gold, then exit")
     ap.add_argument("--concurrency", type=int, default=8, help="concurrent POSTs (1=sync, >1=async) bench 8 optimal on 4c")
     ap.add_argument("--bench", action="store_true", help="sweep concurrency 1,2,4,8,16 on --limit sample")
     args = ap.parse_args()
@@ -159,6 +164,53 @@ def main():  # noqa: PLR0915
         print("[bench] done — pick best concurrency for full run", flush=True)
         return
 
+    con = duckdb.connect()
+
+    if args.cleanup_ghosts:
+        # Ghost docs = rating/reading-log keys with no gold doc: past runs atomically "set"
+        # fields on them and Solr materialized titleless stubs. Delete by exact key set.
+        t0 = time.time()
+        ghosts = con.execute(
+            f"""
+            WITH rated AS (SELECT DISTINCT WorkKey AS k FROM '{args.ratings}'),
+                 shelved AS (SELECT DISTINCT WorkKey AS k FROM '{args.reading_log}')
+            SELECT k FROM (SELECT k FROM rated UNION SELECT k FROM shelved)
+            ANTI JOIN (SELECT key AS k FROM read_parquet(['{args.gold}'])) g USING (k)
+            """
+        ).fetchall()
+        keys = [k for (k,) in ghosts]
+        print(f"[cleanup] {len(keys):,} ghost works to delete ({time.time() - t0:.1f}s)", flush=True)
+        if args.dry_run:
+            for k in keys[:10]:
+                print("  would delete:", k)
+            return
+        deleted = 0
+        t0 = time.time()
+        # XML delete-by-id: the JSON update handler mis-parses {"delete":{"id":..}} as an
+        # atomic-update op on docs with nested children ("Unknown operation ... id").
+        with httpx.Client(timeout=120.0) as client:
+            for i in range(0, len(keys), args.batch):
+                chunk = keys[i : i + args.batch]
+                xml = "<delete>" + "".join(f"<id>{k}</id>" for k in chunk) + "</delete>"
+                payload = xml.encode()
+                for attempt in range(3):
+                    try:
+                        r = client.post(update_url, params={"commitWithin": "60000"}, content=payload,
+                                        headers={"Content-Type": "application/xml"})
+                        r.raise_for_status()
+                        break
+                    except Exception as exc:
+                        if attempt == 2:
+                            print(f"[cleanup] failing chunk head: {chunk[:3]}", flush=True)
+                            raise
+                        time.sleep(2**attempt)
+                deleted += len(chunk)
+                print(f"  deleted {deleted:,}/{len(keys):,}", flush=True)
+        print(f"[cleanup done] {deleted:,} deletes in {(time.time() - t0) / 60:.1f}m; commit...", flush=True)
+        r = httpx.post(update_url, params={"commit": "true"}, headers={"Content-Type": "application/json"}, content=b"{}", timeout=300)
+        r.raise_for_status()
+        return
+
     print(
         f"[ratings] ratings={args.ratings} reading_log={args.reading_log} solr={solr_base} batch={args.batch} conc={args.concurrency}",
         flush=True,
@@ -172,12 +224,14 @@ def main():  # noqa: PLR0915
         print(f"[ping failed] {e}")
         raise
 
-    con = duckdb.connect()
-
     # ---------- Ratings ----------
     if not args.skip_ratings:
         print("[ratings] aggregating...", flush=True)
         q0 = time.time()
+        # ghost guard: keys absent from gold are skipped — atomic updates would create stub docs
+        con.execute(
+            f"CREATE OR REPLACE TEMP TABLE gold_keys AS SELECT key AS k FROM read_parquet(['{args.gold}'])"
+        )
         cur = con.execute(f"""
             SELECT WorkKey,
                    count(*) FILTER (WHERE Rating=1) AS c1,
@@ -186,6 +240,7 @@ def main():  # noqa: PLR0915
                    count(*) FILTER (WHERE Rating=4) AS c4,
                    count(*) FILTER (WHERE Rating=5) AS c5
             FROM '{args.ratings}'
+            SEMI JOIN gold_keys g ON WorkKey = g.k
             GROUP BY WorkKey
             {limit_sql}
         """)
@@ -223,6 +278,7 @@ def main():  # noqa: PLR0915
                    count(*) FILTER (WHERE Shelf='Already Read') AS already,
                    count(*) FILTER (WHERE Shelf='Stopped Reading') AS stopped
             FROM '{args.reading_log}'
+            SEMI JOIN gold_keys g ON WorkKey = g.k
             GROUP BY WorkKey
             {limit_sql}
         """)

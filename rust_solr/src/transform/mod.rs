@@ -111,14 +111,59 @@ pub fn edition_ocaid(ed: &Value) -> Option<&str> {
         .filter(|s| !s.is_empty())
 }
 
+/// Identifier-based providers, in book_providers.py PROVIDER_ORDER order (after Direct,
+/// before IA). Default AbstractBookProvider.get_access == PUBLIC for all of them.
+const IDENTIFIER_PROVIDERS: [&str; 7] = [
+    "librivox",
+    "project_gutenberg",
+    "project_runeberg",
+    "standard_ebooks",
+    "openstax",
+    "cita_press",
+    "wikisource",
+];
+
+pub struct EditionAccess {
+    pub access: EbookAccess,
+    /// provider_name values of ALL matching providers in PROVIDER_ORDER
+    /// (edition.py:130 _providers / :349 ebook_provider). BWB omitted: its match is
+    /// config-gated (bwb_test_holdings) and never fires for dumps.
+    pub providers: Vec<String>,
+}
+
+fn edition_access_and_providers(ed: &Value, ia_map: &HashMap<String, IaLite>) -> EditionAccess {
+    let mut providers: Vec<String> = Vec::new();
+    let mut access: Option<EbookAccess> = None;
+    if let Some(a) = direct_provider_ebook_access(ed) {
+        providers.push("direct".to_string());
+        access = Some(a);
+    }
+    let identifiers = ed.get("identifiers").cloned().unwrap_or(Value::Null);
+    let has_id = |k: &str| identifiers.get(k).map(value_truthy).unwrap_or(false);
+    for p in IDENTIFIER_PROVIDERS {
+        if has_id(p) {
+            providers.push(p.to_string());
+            if access.is_none() {
+                access = Some(EbookAccess::Public);
+            }
+        }
+    }
+    if edition_ocaid(ed).is_some() {
+        providers.push("ia".to_string());
+        if access.is_none() {
+            access = Some(ia_ebook_access(
+                edition_ocaid(ed).and_then(|o| ia_map.get(o)),
+            ));
+        }
+    }
+    EditionAccess {
+        access: access.unwrap_or(EbookAccess::NoEbook),
+        providers,
+    }
+}
+
 pub fn edition_ebook_access(ed: &Value, ia_map: &HashMap<String, IaLite>) -> EbookAccess {
-    if let Some(access) = direct_provider_ebook_access(ed) {
-        return access;
-    }
-    if let Some(ocaid) = edition_ocaid(ed) {
-        return ia_ebook_access(ia_map.get(ocaid));
-    }
-    EbookAccess::NoEbook
+    edition_access_and_providers(ed, ia_map).access
 }
 
 /// EditionSolrBuilder.ia_collection (edition.py:303): metadata collections minus fav-*.
@@ -569,6 +614,7 @@ pub fn build_solr_doc(
     editions: &[Value],
     authors: &[Value],
     ia_metadata: &HashMap<String, IaLite>,
+    series_docs: &HashMap<String, String>,
 ) -> Value {
     let key = get_str(work, "key").unwrap_or_default();
     let title = work
@@ -1031,13 +1077,14 @@ pub fn build_solr_doc(
                     .unwrap_or(series_key)
                     .to_string();
                 series_keys.push(olid);
-                // name fallback to key if not present (since we don't fetch series docs)
-                let name = edge
-                    .get("series")
-                    .and_then(|v| v.get("name"))
-                    .and_then(|n| n.as_str())
-                    .unwrap_or(series_key);
-                series_names.push(name.to_string());
+                // WorkSolrBuilder.series_name (work.py:397): name from the FETCHED series doc,
+                // falling back to the edge's key path (the embedded reference is replaced by the
+                // fetched doc before this runs, so its own "name" — if any — is ignored).
+                let name = series_docs
+                    .get(series_key)
+                    .cloned()
+                    .unwrap_or_else(|| series_key.to_string());
+                series_names.push(name);
                 let pos = edge
                     .get("position")
                     .and_then(|v| v.as_str())
@@ -1173,12 +1220,19 @@ pub fn build_solr_doc(
     if !ia_list.is_empty() {
         let ia_vals: Vec<String> = ia_list.iter().map(|e| e.ocaid.clone()).collect();
         doc.insert("ia".to_string(), json!(ia_vals));
-        // ebook_provider: uniq provider names where ocaid present -> ["ia"]
-        let ebook_provider: Vec<String> = if ia_vals.is_empty() {
-            vec![]
-        } else {
-            vec!["ia".to_string()]
-        };
+    }
+    // WorkSolrBuilder.ebook_provider (work.py:525): uniq provider names across editions,
+    // in edition order.
+    {
+        let mut ebook_provider: Vec<String> = Vec::new();
+        let mut seen_providers = HashSet::new();
+        for ed in editions {
+            for p in edition_access_and_providers(ed, ia_metadata).providers {
+                if seen_providers.insert(p.clone()) {
+                    ebook_provider.push(p);
+                }
+            }
+        }
         if !ebook_provider.is_empty() {
             doc.insert("ebook_provider".to_string(), json!(ebook_provider));
         }
@@ -1562,8 +1616,10 @@ pub fn build_solr_doc(
             if !ed_ia_coll.is_empty() {
                 ed_doc.insert("ia_collection".to_string(), json!(ed_ia_coll));
             }
-            if ed_access > EbookAccess::NoEbook {
-                ed_doc.insert("ebook_provider".to_string(), json!(["ia"]));
+            // EditionSolrBuilder.ebook_provider (edition.py:349): all matching provider names
+            let ed_providers = edition_access_and_providers(ed, ia_metadata).providers;
+            if !ed_providers.is_empty() {
+                ed_doc.insert("ebook_provider".to_string(), json!(ed_providers));
             }
             ed_doc.insert(
                 "has_fulltext".to_string(),
@@ -1747,7 +1803,7 @@ mod tests {
             json!({"key": "/books/OL2M", "ocaid": "pub1", "covers": [5]}),
             json!({"key": "/books/OL3M"}),
         ];
-        let doc = build_solr_doc(&work, &editions, &[], &map);
+        let doc = build_solr_doc(&work, &editions, &[], &map, &HashMap::new());
         assert_eq!(doc["ebook_access"], json!("public"));
         assert_eq!(doc["has_fulltext"], json!(true));
         assert_eq!(doc["public_scan_b"], json!(true));
@@ -1767,10 +1823,94 @@ mod tests {
     }
 
     #[test]
+    fn identifier_provider_chain_matches_prod_order() {
+        let empty = empty_map();
+
+        // gutenberg id alone -> PUBLIC via identifier provider
+        let ed = json!({"key": "/books/OL1M", "identifiers": {"project_gutenberg": ["123"]}});
+        assert_eq!(edition_ebook_access(&ed, &empty), EbookAccess::Public);
+        assert_eq!(
+            edition_access_and_providers(&ed, &empty).providers,
+            vec!["project_gutenberg"]
+        );
+
+        // gutenberg beats IA even when ocaid present (PROVIDER_ORDER), both listed
+        let mut map = empty_map();
+        map.insert("pub1".to_string(), ia(&["opensource"], false));
+        let ed_both = json!({
+            "key": "/books/OL2M",
+            "ocaid": "pub1",
+            "identifiers": {"project_gutenberg": ["123"]}
+        });
+        assert_eq!(edition_ebook_access(&ed_both, &map), EbookAccess::Public);
+        assert_eq!(
+            edition_access_and_providers(&ed_both, &map).providers,
+            vec!["project_gutenberg", "ia"]
+        );
+
+        // direct provider still wins over everything
+        let ed_direct = json!({
+            "key": "/books/OL3M",
+            "identifiers": {"project_gutenberg": ["123"], "librivox": ["lv"]},
+            "providers": [{"url": "https://x", "access": "borrow"}]
+        });
+        let ea = edition_access_and_providers(&ed_direct, &empty);
+        assert_eq!(ea.access, EbookAccess::Borrowable);
+        assert_eq!(
+            ea.providers,
+            vec!["direct", "librivox", "project_gutenberg"]
+        );
+
+        // nothing matches -> NO_EBOOK with no providers
+        let bare = json!({"key": "/books/OL4M"});
+        let ea_bare = edition_access_and_providers(&bare, &empty);
+        assert_eq!(ea_bare.access, EbookAccess::NoEbook);
+        assert!(ea_bare.providers.is_empty());
+    }
+
+    #[test]
+    fn work_doc_ebook_provider_uniqs_across_editions() {
+        let work = json!({"key": "/works/OL1W", "title": "T"});
+        let editions = vec![
+            json!({"key": "/books/OL1M", "identifiers": {"project_gutenberg": ["1"], "librivox": ["a"]}}),
+            json!({"key": "/books/OL2M", "identifiers": {"librivox": ["b"]}, "ocaid": "x"}),
+        ];
+        let doc = build_solr_doc(&work, &editions, &[], &HashMap::new(), &HashMap::new());
+        // uniq across editions in first-seen order
+        assert_eq!(
+            doc["ebook_provider"],
+            json!(["librivox", "project_gutenberg", "ia"])
+        );
+    }
+
+    #[test]
+    fn series_name_resolves_from_fetched_doc() {
+        let mut series_docs = HashMap::new();
+        series_docs.insert(
+            "/series/OL9L".to_string(),
+            "Fetched Series Name".to_string(),
+        );
+        let work = json!({
+            "key": "/works/OL1W",
+            "title": "T",
+            "series": [{"series": {"key": "/series/OL9L"}, "position": "2"},
+                       {"series": {"key": "/series/OL404L"}}]
+        });
+        let doc = build_solr_doc(&work, &Vec::new(), &[], &HashMap::new(), &series_docs);
+        assert_eq!(doc["series_key"], json!(["OL9L", "OL404L"]));
+        // fetched name wins over anything embedded; missing doc falls back to key path
+        assert_eq!(
+            doc["series_name"],
+            json!(["Fetched Series Name", "/series/OL404L"])
+        );
+        assert_eq!(doc["series_position"], json!(["2", ""]));
+    }
+
+    #[test]
     fn work_doc_without_metadata_stays_unclassified() {
         let work = json!({"key": "/works/OL1W", "title": "T"});
         let editions = vec![json!({"key": "/books/OL1M", "ocaid": "x"})];
-        let doc = build_solr_doc(&work, &editions, &[], &empty_map());
+        let doc = build_solr_doc(&work, &editions, &[], &empty_map(), &HashMap::new());
         assert_eq!(doc["ebook_access"], json!("unclassified"));
         assert_eq!(doc["has_fulltext"], json!(false));
         assert_eq!(doc["public_scan_b"], json!(false));

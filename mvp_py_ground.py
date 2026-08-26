@@ -177,6 +177,17 @@ def main():
             for lst in ebw.values():
                 for ed in lst:
                     self.cache[ed["key"]] = ed
+            # series docs so WorkSolrUpdater resolves series names like prod
+            import glob as _glob
+
+            other = Path(args.bronze_works).parent / "other.parquet"
+            if other.exists():
+                con2 = duckdb.connect()
+                for (j,) in con2.execute(
+                    f"SELECT JSON FROM read_parquet(['{other}']) WHERE Type = '/type/series'"
+                ).fetchall():
+                    d = json.loads(j)
+                    self.cache[d["key"]] = d
 
         async def get_document(self, k):
             return self.cache.get(k) or {"key": k, "type": {"key": "/type/delete"}}

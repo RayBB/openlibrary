@@ -137,7 +137,19 @@ mapping, direct-provider precedence, and scorecard aggregation.
    `AuthorSolrUpdater`'s Solr facet semantics exactly; validated 300/300 top authors vs the real
    updater querying a loaded index (`--validate N`, zero mismatches). Posts atomic `{"set":}` updates
    to all 15.4M authors in ~30 min at conc 8.
-4. Solr loading deferred (`mvp_load.py:24` `commitWithin=60000`).
+5. ~~Ghost work docs~~ — done: `mvp_ratings_to_solr.py` SEMI-JOINs gold before aggregating
+   (atomic updates can no longer create stubs); `--cleanup-ghosts` deletes historical ones by
+   exact key set via XML delete (JSON delete objects mis-parse as atomic ops on nested docs).
+   Live index cleaned: titleless works 34,062 -> 0.
+6. ~~Non-IA provider identifiers~~ — done: full PROVIDER_ORDER chain (direct -> librivox ->
+   project_gutenberg -> project_runeberg -> standard_ebooks -> openstax -> cita_press ->
+   wikisource -> ia; BWB is config-gated and skipped) with faithful multi-provider
+   `ebook_provider` lists.
+7. ~~Series names~~ — done: fetched-doc name resolution from bronze other.parquet
+   `/type/series` docs, falling back to the key path like prod when absent.
+8. ~~osp_count~~ — done: `mvp_osp_to_solr.py` (ghost-guarded) posts counts from the official
+   `2023_openlibrary_osp_counts/osp_totals.db`; 1,292,547 works after guard. Run after ratings.
+9. Solr loading deferred (`mvp_load.py:24` `commitWithin=60000`).
 
 ## Author aggregates
 

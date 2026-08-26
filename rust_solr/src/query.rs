@@ -8,6 +8,8 @@ pub struct Fetched {
     pub editions_by_work: std::collections::HashMap<String, Vec<Value>>,
     pub authors: std::collections::HashMap<String, Value>,
     pub ia_metadata: std::collections::HashMap<String, IaLite>,
+    /// "/series/OLxxL" -> name (from bronze other.parquet); prod fetches these docs
+    pub series_docs: std::collections::HashMap<String, String>,
 }
 
 /// Lite IA metadata for one ocaid; mirrors bp.IALiteMetadata fields used for ebook access.
@@ -143,6 +145,42 @@ fn read_bucket_rows(
 
 /// Mirrors WorkSolrUpdater.update_key's /type/edition branch (work.py:67-83): orphan editions
 /// are indexed as standalone works under a /works/OLxxxM key.
+/// Load /type/series docs from bronze other.parquet (key -> name) so series_name matches
+/// production, which fetches the series doc before building (work.py:397).
+fn load_series_docs(
+    con: &Connection,
+    bronze_works: &str,
+) -> Result<std::collections::HashMap<String, String>> {
+    let mut out = std::collections::HashMap::new();
+    let other = match std::path::Path::new(bronze_works).parent() {
+        Some(dir) => dir.join("other.parquet"),
+        None => return Ok(out),
+    };
+    if !other.exists() {
+        return Ok(out);
+    }
+    let mut stmt = con.prepare(&format!(
+        "SELECT JSON FROM '{}' WHERE Type = '/type/series'",
+        other.to_string_lossy().replace('\'', "''")
+    ))?;
+    let rows = stmt.query_map([], |row| {
+        let j: String = row.get(0)?;
+        Ok(j)
+    })?;
+    for r in rows {
+        if let Ok(v) = serde_json::from_str::<Value>(&r?) {
+            if let (Some(k), name) = (
+                v.get("key").and_then(|x| x.as_str()),
+                v.get("name").and_then(|x| x.as_str()),
+            ) {
+                out.insert(k.to_string(), name.unwrap_or_default().to_string());
+            }
+        }
+    }
+    eprintln!("Loaded {} series docs", out.len());
+    Ok(out)
+}
+
 pub fn synthesize_fake_work(ed: &Value, fake_key: &str) -> Value {
     let mut fw = serde_json::Map::new();
     fw.insert("key".to_string(), json!(fake_key));
@@ -369,6 +407,7 @@ pub fn fetch(
         Some(path) => load_ia_metadata(&con, path, &editions_by_work)?,
         None => std::collections::HashMap::new(),
     };
+    let series_docs = load_series_docs(&con, bronze_works)?;
     eprintln!(
         "Prepare: works {:.2}s editions {:.2}s authors {:.2}s ia {:.2}s total {:.2}s",
         (t1 - t0).as_secs_f64(),
@@ -383,6 +422,7 @@ pub fn fetch(
         editions_by_work,
         authors,
         ia_metadata,
+        series_docs,
     })
 }
 

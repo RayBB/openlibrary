@@ -105,7 +105,13 @@ fn main() -> Result<()> {
                             .collect()
                     })
                     .unwrap_or_default();
-                let doc = transform::build_solr_doc(w, eds, &work_authors, &fetched.ia_metadata);
+                let doc = transform::build_solr_doc(
+                    w,
+                    eds,
+                    &work_authors,
+                    &fetched.ia_metadata,
+                    &fetched.series_docs,
+                );
                 docs.push(doc);
             }
             docs
