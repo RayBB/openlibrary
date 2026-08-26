@@ -15,10 +15,15 @@ RUN apt-get update \
         build-essential curl ca-certificates git procps \
     && rm -rf /var/lib/apt/lists/*
 
-# Docker CLI (host daemon via socket mount; no daemon inside the agent)
+# Docker CLI + compose plugin (host daemon via socket mount; no daemon inside)
+ARG DOCKER_CLI_VERSION=29.7.2
 RUN curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_CLI_VERSION}.tgz" \
         | tar xz --strip-components=1 -C /usr/local/bin docker/docker \
-    && docker --version
+    && mkdir -p /usr/local/lib/docker/cli-plugins \
+    && curl -fsSL "https://github.com/docker/compose/releases/download/v2.39.4/docker-compose-linux-x86_64" \
+        -o /usr/local/lib/docker/cli-plugins/docker-compose \
+    && chmod +x /usr/local/lib/docker/cli-plugins/docker-compose \
+    && docker --version && docker compose version
 
 # Pinned rust toolchain
 ENV RUSTUP_HOME=/usr/local/rustup \
