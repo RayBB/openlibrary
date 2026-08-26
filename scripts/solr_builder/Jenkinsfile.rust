@@ -260,17 +260,26 @@ PYEOF
             steps {
                 sh label: 'ghost-guarded satellite loaders', script: '''#!/bin/bash
                     set -euo pipefail
-                    GOLD="lake/gold/parts/*.parquet"
+                    # DuckDB globs don't traverse symlinked dirs: pass REAL paths for every
+                    # parquet/duckdb argument (relative lake/ symlink is only for scripts'
+                    # internal stdlib file reads).
+                    GOLD="$LAKE_DIR/gold/parts/*.parquet"
+                    RATINGS="$LAKE_DIR/aux/ratings.parquet"
+                    READING_LOG="$LAKE_DIR/aux/reading_log.parquet"
+                    OSP_DB="$LAKE_DIR/osp/osp_totals.db"
                     LIMIT=""; SAMPLE=""
                     if [ "${SMOKE:-false}" = true ]; then
                         LIMIT="--limit 20000"; SAMPLE="--limit 3000"
                     fi
-                    $PY mvp_authors_to_solr.py --solr "$SOLR" --batch 10000 $LIMIT
-                    $PY mvp_lists_to_solr.py    --solr "$SOLR" --batch 10000 $LIMIT
+                    $PY mvp_authors_to_solr.py --solr "$SOLR" --batch 10000 \
+                        --bronze "$LAKE_DIR/bronze/authors.parquet" $LIMIT
+                    $PY mvp_lists_to_solr.py    --solr "$SOLR" --batch 10000 \
+                        --bronze "$LAKE_DIR/bronze/lists.parquet" $LIMIT
                     $PY mvp_ratings_to_solr.py  --solr "$SOLR" --batch 10000 \
+                        --ratings "$RATINGS" --reading-log "$READING_LOG" \
                         --gold $GOLD $SAMPLE --concurrency "${POST_CONCURRENCY:-8}"
                     $PY mvp_osp_to_solr.py      --solr "$SOLR" --batch 5000 \
-                        --gold $GOLD $SAMPLE --concurrency "${POST_CONCURRENCY:-8}"
+                        --osp-db "$OSP_DB" --gold $GOLD $SAMPLE --concurrency "${POST_CONCURRENCY:-8}"
                 '''
             }
         }
@@ -289,13 +298,13 @@ PYEOF
                     export AGG_DUMP
                     if [ "${RESUME:-true}" = true ] && [ -s "$AGG_DUMP" ]; then
                         $PY mvp_author_aggregates.py --load-aggs \
-                            --gold-parts-glob "lake/gold/parts/*.parquet" \
-                            --authors lake/bronze/authors.parquet \
+                            --gold-parts-glob "$LAKE_DIR/gold/parts/*.parquet" \
+                            --authors "$LAKE_DIR/bronze/authors.parquet" \
                             --solr "$SOLR" --concurrency 8
                     else
                         $PY mvp_author_aggregates.py \
-                            --gold-parts-glob "lake/gold/parts/*.parquet" \
-                            --authors lake/bronze/authors.parquet \
+                            --gold-parts-glob "$LAKE_DIR/gold/parts/*.parquet" \
+                            --authors "$LAKE_DIR/bronze/authors.parquet" \
                             --solr "$SOLR" --concurrency 8
                     fi
                 '''
