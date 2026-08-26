@@ -150,6 +150,7 @@ services:
       # Which branch of internetarchive/openlibrary the solr-builder job tracks.
       # Defaults to master. E.g.: SEED_BRANCH=chore/pinned-jenkins-solr-builder
       SEED_BRANCH: ${SEED_BRANCH:-}
+      SEED_REPO: ${SEED_REPO:-}
     volumes:
       - "jenkins-data:/var/jenkins_home"
       # Host-path bind (NOT a second named-volume mount): the Jenkinsfile maps

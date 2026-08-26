@@ -61,7 +61,7 @@ pipeline {
         stage('1: Pipeline agent image') {
             steps {
                 dir('scripts/solr_builder') {
-                    sh label: 'build solr-rust-agent', script: '''
+                    sh label: 'build solr-rust-agent', script: '''#!/bin/bash
                         # context = this dir only; the image needs no repo files
                         docker build -f Dockerfile.rust-agent \
                             -t openlibrary/solr-rust-agent:latest .
@@ -71,7 +71,7 @@ pipeline {
         }
         stage('2: Isolated Solr (:8985)') {
             steps {
-                sh label: 'up (+ wipe?)', script: '''
+                sh label: 'up (+ wipe?)', script: '''#!/bin/bash
                     set -euo pipefail
                     COMPOSE="$HOST_WORKSPACE/compose.rust_full.yaml"
                     if [ "${WIPE_SOLR:-false}" = true ]; then
@@ -96,7 +96,7 @@ pipeline {
                 DUMP_FILE = sh(script: "curl '${params.DUMP_URL}' -s -L -I -o /dev/null -w '%{url_effective}'", returnStdout: true).trim().split('/').last()
             }
             steps {
-                sh label: "download ${env.DUMP_FILE}", script: '''
+                sh label: "download ${env.DUMP_FILE}", script: '''#!/bin/bash
                     set -euo pipefail
                     mkdir -p "$LAKE_DIR/dumps"
                     DUMP="$LAKE_DIR/dumps/${DUMP_FILE}"
@@ -116,7 +116,7 @@ pipeline {
                 OL_DUMP = "${LAKE_HOST_DIR}/dumps/${env.DUMP_FILE}"
             }
             steps {
-                sh label: 'bronze -> silver -> bucketing -> orphans', script: '''
+                sh label: 'bronze -> silver -> bucketing -> orphans', script: '''#!/bin/bash
                     set -euo pipefail
                     mkdir -p lake && ln -sfn "$LAKE_DIR" lake
                     if [ "${RESUME:-true}" = true ] && [ -s lake/bronze/_meta.json ]; then
@@ -145,7 +145,7 @@ pipeline {
         stage('5: IA lite metadata') {
             when { expression { return params.FETCH_IA_METADATA } }
             steps {
-                sh label: 'bulk-fetch collection/ari per ocaid', script: '''
+                sh label: 'bulk-fetch collection/ari per ocaid', script: '''#!/bin/bash
                     set -euo pipefail
                     mkdir -p lake && ln -sfn "$LAKE_DIR" lake
                     if [ "${RESUME:-true}" = true ] && [ -s "$LAKE_DIR/ia/ia_lite.parquet" ]; then
@@ -171,7 +171,7 @@ pipeline {
                 ''', returnStdout: true).trim()
             }
             steps {
-                sh label: "transform ${env.CHUNK_COUNT} chunks (-P ${params.CHUNK_PARALLELISM})", script: '''
+                sh label: "transform ${env.CHUNK_COUNT} chunks (-P ${params.CHUNK_PARALLELISM})", script: '''#!/bin/bash
                     set -euo pipefail
                     mkdir -p lake && ln -sfn "$LAKE_DIR" lake
                     mkdir -p lake/gold/parts
@@ -208,7 +208,7 @@ PY
         }
         stage('7: Load works into Solr') {
             steps {
-                sh label: 'parallel NDJSON ingest + commit + assert', script: '''
+                sh label: 'parallel NDJSON ingest + commit + assert', script: '''#!/bin/bash
                     set -euo pipefail
                     URL='http://localhost:8985/solr/openlibrary/update/json/docs?commitWithin=60000'
                     if [ "${SMOKE:-false}" = true ]; then
@@ -239,7 +239,7 @@ PYEOF
         stage('8: Satellites (authors/lists/ratings/osp/aggregates)') {
             when { expression { return params.LOAD_SATELLITES } }
             steps {
-                sh label: 'ghost-guarded satellite loaders', script: '''
+                sh label: 'ghost-guarded satellite loaders', script: '''#!/bin/bash
                     set -euo pipefail
                     GOLD="lake/gold/parts/*.parquet"
                     LIMIT=""; SAMPLE=""
@@ -261,7 +261,7 @@ PYEOF
                 AGG_DUMP = '${LAKE_HOST_DIR}/author_aggs.parquet'
             }
             steps {
-                sh label: 'rollups + enriched author updates', script: '''
+                sh label: 'rollups + enriched author updates', script: '''#!/bin/bash
                     set -euo pipefail
                     if [ "${SMOKE:-false}" = true ]; then
                         echo "smoke: skipping author aggregates (needs full corpus rollups)"
@@ -284,7 +284,7 @@ PYEOF
         }
         stage('10: Verify gate') {
             steps {
-                sh label: 'count + integrity assertions', script: '''
+                sh label: 'count + integrity assertions', script: '''#!/bin/bash
                     set -euo pipefail
                     python3 - <<'PYEOF'
 import json, os, urllib.request, urllib.parse
@@ -320,7 +320,7 @@ PYEOF
         stage('11: Optimize (optional)') {
             when { expression { return params.OPTIMIZE } }
             steps {
-                sh label: 'optimize=maxSegments=1 (hours)', script: '''
+                sh label: 'optimize=maxSegments=1 (hours)', script: '''#!/bin/bash
                     curl -sf -X POST 'http://localhost:8985/solr/openlibrary/update?optimize=true&maxSegments=1' \
                         -H 'Content-Type: application/json' -d '{}'
                 '''
