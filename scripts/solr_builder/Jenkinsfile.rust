@@ -102,18 +102,23 @@ pipeline {
             }
         }
         stage('3: Dump') {
-            environment {
-                DUMP_FILE = sh(script: "curl '${params.DUMP_URL}' -s -L -I -o /dev/null -w '%{url_effective}'", returnStdout: true).trim().split('/').last()
-            }
             steps {
-                sh label: "download ${env.DUMP_FILE}", script: '''#!/bin/bash
+                sh label: 'resolve + fetch dump', script: '''#!/bin/bash
                     set -euo pipefail
                     DUMP_DIR="$(dirname "$LAKE_DIR")/dumps"
                     mkdir -p "$DUMP_DIR"
-                    DUMP="$DUMP_DIR/${DUMP_FILE}"
+                    if [ "${RESUME:-true}" = true ] && compgen -G "$DUMP_DIR/ol_dump_*.txt.gz" >/dev/null; then
+                        DUMP=$(ls -t "$DUMP_DIR"/ol_dump_*.txt.gz | head -1)
+                        echo "resume: $(du -h "$DUMP" | cut -f1) ${DUMP##*/}"
+                        exit 0
+                    fi
+                    DUMP_FILE=$(curl --max-time 60 -s -L -I -o /dev/null -w '%{url_effective}' "${DUMP_URL}")
+                    DUMP_FILE=${DUMP_FILE##*/}
+                    DUMP="$DUMP_DIR/$DUMP_FILE"
                     if [ "${RESUME:-true}" = true ] && [ -s "$DUMP" ]; then
-                        echo "resume: $DUMP exists ($(du -h "$DUMP" | cut -f1))"
+                        echo "resume: $(du -h "$DUMP" | cut -f1) $DUMP_FILE"
                     else
+                        echo "downloading $DUMP_FILE ..."
                         curl -sL -o "$DUMP" "${DUMP_URL}"
                     fi
                     size=$(stat -c%s "$DUMP")
