@@ -53,8 +53,11 @@ pipeline {
     environment {
         SOLR = 'http://localhost:8985/solr/openlibrary'
         LAKE_DIR = '${LAKE_HOST_DIR}'
-        // Host-side paths for anything handed to the docker daemon
-        HOST_WORKSPACE = sh(script: "docker volume inspect --format='{{.Mountpoint}}' jenkins-data", returnStdout: true).trim()
+        // Host-side paths for anything handed to the docker daemon: swap the
+        // in-controller /var/jenkins_home prefix for the host jenkins-data
+        // volume mountpoint (same trick as the legacy Jenkinsfile).
+        JENKINS_DATA_HOST = sh(script: "docker volume inspect --format='{{.Mountpoint}}' jenkins-data", returnStdout: true).trim()
+        HOST_WORKSPACE = env.WORKSPACE.replaceFirst('/var/jenkins_home', JENKINS_DATA_HOST)
         PY = 'python3'
     }
     stages {
