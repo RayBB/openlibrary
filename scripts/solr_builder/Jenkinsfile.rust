@@ -129,7 +129,7 @@ pipeline {
                     OL_DUMP=$(ls -t "$LAKE_DIR"/dumps/ol_dump_*.txt.gz | head -1)
                     export OL_DUMP
                     echo "using dump: $OL_DUMP"
-                    mkdir -p lake && ln -sfn "$LAKE_DIR" lake
+                    rm -rf lake && ln -sfn "$LAKE_DIR" lake
                     if [ "${RESUME:-true}" = true ] && [ -s lake/bronze/_meta.json ]; then
                         echo "resume: bronze exists"
                     else
@@ -158,7 +158,7 @@ pipeline {
             steps {
                 sh label: 'bulk-fetch collection/ari per ocaid', script: '''#!/bin/bash
                     set -euo pipefail
-                    mkdir -p lake && ln -sfn "$LAKE_DIR" lake
+                    rm -rf lake && ln -sfn "$LAKE_DIR" lake
                     if [ "${RESUME:-true}" = true ] && [ -s "$LAKE_DIR/ia/ia_lite.parquet" ]; then
                         echo "resume: ia_lite.parquet exists"
                     else
@@ -184,7 +184,7 @@ pipeline {
             steps {
                 sh label: "transform ${env.CHUNK_COUNT} chunks (-P ${params.CHUNK_PARALLELISM})", script: '''#!/bin/bash
                     set -euo pipefail
-                    mkdir -p lake && ln -sfn "$LAKE_DIR" lake
+                    rm -rf lake && ln -sfn "$LAKE_DIR" lake
                     mkdir -p lake/gold/parts
                     MANIFEST="$PWD/lake/silver/chunks_20000.json"
                     run_chunk() {
