@@ -196,7 +196,7 @@ pipeline {
                             return 0
                         fi
                         # shellcheck disable=SC2086
-                        cargo run --release -p rust_solr -- \
+                        cargo run --release --manifest-path rust_solr/Cargo.toml -p rust_solr -- \
                             --chunks "$MANIFEST" --chunk-index "$i" \
                             --out "$out" $IA_FLAG
                         # NDJSON twin for the parallel loader (columnar read, no giant-JSON pain)
