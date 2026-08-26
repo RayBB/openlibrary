@@ -52,7 +52,9 @@ pipeline {
     }
     environment {
         SOLR = 'http://localhost:8985/solr/openlibrary'
-        LAKE_DIR = '${LAKE_HOST_DIR}'
+        // Groovy-interpolated: a single-quoted '${PARAM}' would export literally
+        // (shell never re-expands env values) — this exact bug cost a debug cycle.
+        LAKE_DIR = "${params.LAKE_HOST_DIR}"
         // Host-side paths for anything handed to the docker daemon: swap the
         // in-controller /var/jenkins_home prefix for the host jenkins-data
         // volume mountpoint (same trick as the legacy Jenkinsfile).
