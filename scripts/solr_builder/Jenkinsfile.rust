@@ -77,11 +77,16 @@ pipeline {
                 sh label: 'up (+ wipe?)', script: '''#!/bin/bash
                     set -euo pipefail
                     COMPOSE="$HOST_WORKSPACE/compose.rust_full.yaml"
+                    code=$(curl -s -o /dev/null -w '%{http_code}' "$SOLR/admin/ping" || true)
+                    if [ "$code" = "200" ] && [ "${WIPE_SOLR:-false}" != true ]; then
+                        echo "resume: reusing running solr_rust_full"
+                        exit 0
+                    fi
+                    # tear down ANY prior instance of this stack (port 8985 owner included)
+                    docker rm -f $(docker ps -aq --filter name=solr_rust_full) 2>/dev/null || true
                     if [ "${WIPE_SOLR:-false}" = true ]; then
-                        docker rm -f solr_rust_full || true
                         rm -rf "${LAKE_HOST_DIR}/../solr_rust_full"
                     fi
-                    # chown-free: solr image fixes perms on first boot when dir is fresh
                     mkdir -p "${LAKE_HOST_DIR}/../solr_rust_full"
                     docker compose -p solr_rust_full -f "$COMPOSE" up -d solr_rust_full
                     for i in $(seq 1 60); do
