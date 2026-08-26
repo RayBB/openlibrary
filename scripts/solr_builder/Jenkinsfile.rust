@@ -105,7 +105,7 @@ pipeline {
             steps {
                 sh label: 'resolve + fetch dump', script: '''#!/bin/bash
                     set -euo pipefail
-                    DUMP_DIR="$(dirname "$LAKE_DIR")/dumps"
+                    DUMP_DIR="$LAKE_DIR/dumps"
                     echo "stage3: LAKE_DIR=$LAKE_DIR DUMP_DIR=$DUMP_DIR RESUME=${RESUME:-unset}"
                     mkdir -p "$DUMP_DIR"
                     existing=$(ls -t $DUMP_DIR/ol_dump_*.txt.gz 2>/dev/null | head -1 || true)
@@ -134,7 +134,7 @@ pipeline {
                 sh label: 'bronze -> silver -> bucketing -> orphans', script: '''#!/bin/bash
                     set -euo pipefail
                     # newest local dump wins (stage 3 already ensured it exists)
-                    OL_DUMP=$(ls -t "$(dirname "$LAKE_DIR")"/dumps/ol_dump_*.txt.gz | head -1)
+                    OL_DUMP=$(ls -t "$LAKE_DIR"/dumps/ol_dump_*.txt.gz | head -1)
                     export OL_DUMP
                     echo "using dump: $OL_DUMP"
                     rm -rf lake && ln -sfn "$LAKE_DIR" lake
