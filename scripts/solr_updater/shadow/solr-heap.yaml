@@ -1,0 +1,4 @@
+services:
+  solr:
+    environment:
+      - SOLR_HEAP=1g
