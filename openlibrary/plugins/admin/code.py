@@ -9,6 +9,7 @@ import socket
 import subprocess
 import sys
 import traceback
+import uuid
 from collections.abc import Iterable
 from datetime import datetime, timedelta
 
@@ -680,7 +681,9 @@ class solr:
     def POST(self):
         i = web.input(keys="")
         keys = i["keys"].strip().split()
-        web.ctx.site.store["solr-force-update"] = {
+        # A key per request, so a second request can't overwrite this one before
+        # the solr-updater has read it (it reads the store table, not a log of puts)
+        web.ctx.site.store[f"solr-force-update/{uuid.uuid4().hex}"] = {
             "type": "solr-force-update",
             "keys": keys,
             "_rev": None,
