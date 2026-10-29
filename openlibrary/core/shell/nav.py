@@ -49,7 +49,7 @@ def browse_links() -> list[NavLink]:
     """
     return [
         NavLink("/subjects", _("Subjects"), "Subjects"),
-        NavLink("/trending", _("Trending"), "Trending"),
+        NavLink("/trending/now", _("Trending"), "Trending"),
         NavLink("/explore", _("Library Explorer"), "Explore"),
         NavLink("/lists", _("Lists"), "Lists"),
         NavLink("/collections", _("Collections"), "Collections"),

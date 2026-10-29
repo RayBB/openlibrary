@@ -19,7 +19,7 @@ $ view_type = 'desktop' if for_desktop else 'mobile'
 <div class="work-title-and-author $view_type">
   <span>
     <div class="work-line">
-        $_("An edition of") <a href="$work.key?edition=$(ocaid)">$work_title$cond(work.subtitle, ': %s' % work.subtitle)</a>
+        $_("An edition of") <a href="$(work.url() if work.key else '')?edition=$(ocaid)">$work_title$cond(work.subtitle, ': %s' % work.subtitle)</a>
         $if work.first_publish_year:
             <span class="first-published-date" title="$_('First published in %s', work.first_publish_year)">
               ($work.first_publish_year)

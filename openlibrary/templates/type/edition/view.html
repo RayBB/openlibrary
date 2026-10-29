@@ -247,7 +247,7 @@ $ component_times['affiliate_links component'] = time() - component_times['affil
           $for e in previews:
             $if e.languages[0].name not in seen:
               $ seen.add(e.languages[0].name)
-              <a href="$work.key?edition=$(e.ocaid)">$get_language_name(e.languages[0].key, user_lang)</a>
+              <a href="$(work.url() if work.key else '')?edition=$(e.ocaid)">$get_language_name(e.languages[0].key, user_lang)</a>
         </p>
 
     <div class="subjects">

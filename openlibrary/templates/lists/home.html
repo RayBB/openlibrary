@@ -32,7 +32,7 @@ $var title: $_('Lists')
         <div class="listEntry">
             <div class="data">
                 <div class="name">
-                    <a href="$list.key" class="title results">
+                    <a href="$list.url()" class="title results">
                         <div class="cover">
                             $ cover = list.get_cover() or list.get_default_cover()
                             $ cover_url = cover and cover.url("S") or "/static/images/icons/avatar_book-sm.png"

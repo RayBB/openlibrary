@@ -17,7 +17,7 @@ from infogami.utils.view import public
 from openlibrary.core import cache
 from openlibrary.core.follows import PubSub
 from openlibrary.core.fulltext import FulltextRow, all_words_query, exclude_ocaids, fulltext_page, fulltext_search_async, phrase_query
-from openlibrary.core.helpers import affiliate_id, commify, datestr, datetimestr_utc
+from openlibrary.core.helpers import affiliate_id, commify, datestr, datetimestr_utc, urlsafe
 from openlibrary.core.jinja import get_jinja_env, render_jinja_template
 from openlibrary.core.lending import add_availability_async, compose_ia_url, get_available_async
 from openlibrary.core.reading_state import ReadingState, get_reading_state
@@ -241,7 +241,8 @@ def get_carousel_card_data(book, lazy: bool, layout: str | None, key: str, full_
     loan_status_html which bridges the still-Templetor LoanStatus.
     """
 
-    url = book.get("key") or book.url
+    # Link the slugged URL the page redirects to, so crawlers don't spend a 301 per card.
+    url = book.url() if callable(getattr(book, "url", None)) else f"{book.key}/{urlsafe(book.get('title') or 'untitled')}"
     title = book.get("title", "")
     author_names = _resolve_carousel_card_author_names(book)
     byline = _(" by %(name)s", name=", ".join(author_names)) if author_names else ""
